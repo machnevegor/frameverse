@@ -114,10 +114,10 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
         }
 
         return (
-            "Информация о фильме\n"
+            "Информация о фильме:\n"
             f"{yaml.dump(movie_block, allow_unicode=True, default_flow_style=False, sort_keys=False)}\n"
-            "Транскрипт\n"
+            "\n\nТранскрипт:\n"
             f"{yaml.dump(scene_transcript.model_dump(mode='json'), allow_unicode=True, default_flow_style=False, sort_keys=False)}\n"
-            "Предыдущие сцены\n"
+            "\n\nПредыдущие сцены:\n"
             f"{yaml.dump(previous_block, allow_unicode=True, default_flow_style=False, sort_keys=False)}"
         )
