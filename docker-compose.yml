@@ -34,8 +34,6 @@ services:
     depends_on:
       temporal-create-namespace:
         condition: service_completed_successfully
-      server-migrate:
-        condition: service_completed_successfully
     labels:
       - traefik.enable=true
       - traefik.docker.network=dokploy-network
@@ -152,21 +150,9 @@ services:
     depends_on:
       temporal-create-namespace:
         condition: service_completed_successfully
-      server-migrate:
-        condition: service_completed_successfully
     networks:
       - dokploy-network
     restart: unless-stopped
-
-  server-migrate:
-    build:
-      context: packages/server
-    env_file:
-      - .env
-    command: ["sh", "-c", "LITESTAR_APP=src.api.app:create_app uv run litestar database upgrade"]
-    networks:
-      - dokploy-network
-    restart: "no"
 
 networks:
   dokploy-network:
