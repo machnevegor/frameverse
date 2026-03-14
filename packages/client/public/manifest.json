@@ -1,0 +1,15 @@
+{
+  "short_name": "фрейм вёрс",
+  "name": "Найди фильм по содержанию",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "24x24",
+      "type": "image/svg+xml"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#1a1a1a",
+  "background_color": "#ffffff"
+}

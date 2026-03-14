@@ -1,0 +1,52 @@
+services:
+  client:
+    build:
+      context: packages/client
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+
+      - traefik.http.routers.client-http.rule=Host(`frameverse.ru`)
+      - traefik.http.routers.client-http.entrypoints=web
+      - traefik.http.routers.client-http.middlewares=redirect-to-https@file
+
+      - traefik.http.routers.client-https.rule=Host(`frameverse.ru`)
+      - traefik.http.routers.client-https.entrypoints=websecure
+      - traefik.http.routers.client-https.tls=true
+      - traefik.http.routers.client-https.tls.certresolver=letsencrypt
+      - traefik.http.routers.client-https.service=client-svc
+
+      - traefik.http.services.client-svc.loadbalancer.server.port=4173
+    networks:
+      - dokploy-network
+    ports:
+      - "4173:4173"
+    restart: unless-stopped
+
+  server:
+    build:
+      context: packages/server
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+
+      - traefik.http.routers.server-http.rule=Host(`frameverse.ru`) && PathPrefix(`/api`)
+      - traefik.http.routers.server-http.entrypoints=web
+      - traefik.http.routers.server-http.middlewares=redirect-to-https@file
+
+      - traefik.http.routers.server-https.rule=Host(`frameverse.ru`) && PathPrefix(`/api`)
+      - traefik.http.routers.server-https.entrypoints=websecure
+      - traefik.http.routers.server-https.tls=true
+      - traefik.http.routers.server-https.tls.certresolver=letsencrypt
+      - traefik.http.routers.server-https.service=server-svc
+
+      - traefik.http.services.server-svc.loadbalancer.server.port=8000
+    networks:
+      - dokploy-network
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+networks:
+  dokploy-network:
+    external: true

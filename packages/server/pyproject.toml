@@ -1,0 +1,33 @@
+[project]
+name = "frameverse-server"
+version = "0.1.0"
+description = "Backend service for Frameverse"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Egor Machnev" }, { name = "Alexey Volkov" }]
+dependencies = [
+    "fastapi>=0.135.1",
+    "httpx>=0.28.1",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    "uvicorn>=0.41.0",
+]
+
+[project.urls]
+homepage = "https://frameverse.ru"
+repository = "https://github.com/machnevegor/frameverse/tree/main/packages/server"
+
+[tool.uv]
+package = false
+default-groups = "all"
+
+[tool.ruff]
+line-length = 120
+lint.extend-select = ["COM", "I", "PL", "UP"]
+lint.extend-ignore = ["PLC0415", "PLR"]
+target-version = "py313"
+
+[dependency-groups]
+dev = ["ipykernel>=7.2.0", "ipywidgets>=8.1.8"]
+lint = ["ruff>=0.15.5"]
+test = ["pytest>=9.0.2"]

@@ -1,0 +1,7 @@
+.dev.vars
+.DS_Store
+.pnpm-store/
+.tanstack/
+*.local
+dist/
+node_modules/
