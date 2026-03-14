@@ -62,6 +62,9 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
             ]
         else:
             segment_times = ",".join(f"{t:.9f}" for t in split_times[1:])
+            # Force keyframes exactly at split boundaries to guarantee every produced
+            # clip starts with a decodable intra frame.
+            force_keyframes = ",".join(f"{t:.9f}" for t in split_times[1:])
             cmd = [
                 "ffmpeg",
                 "-hide_banner",
@@ -72,14 +75,25 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
                 "-i",
                 source,
                 "-map",
-                "0",
-                "-c",
-                "copy",
+                "0:v:0",
+                "-map",
+                "0:a?",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "21",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-movflags",
+                "+faststart",
+                "-force_key_frames",
+                force_keyframes,
                 "-f",
                 "segment",
-                # force splits even between keyframes so every boundary produces a clip
-                "-break_non_keyframes",
-                "1",
                 "-reset_timestamps",
                 "1",
                 "-segment_times",
