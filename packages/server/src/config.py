@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings
 SBD_THRESHOLD = 55.0
 
 # Shot boundary extraction
-SBE_CONCURRENCY = 10
+SBE_CONCURRENCY = 4
 SBE_QUEUE_SIZE = 256
 SBE_POLL_INTERVAL_SEC = 0.25
 
