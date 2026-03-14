@@ -88,7 +88,8 @@ class AssemblyAIAdapter(ASRProtocol):
         with langfuse.start_as_current_observation(
             as_type="span",
             name="assemblyai.transcribe",
-            trace_context={"trace_id": trace_id},
+            # Langfuse trace_context requires W3C hex format (32 chars, no dashes).
+            trace_context={"trace_id": trace_id.replace("-", "")},
             input={"audio_url": audio_url},
             metadata=metadata or {},
         ) as span:

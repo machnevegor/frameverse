@@ -386,7 +386,9 @@ class PipelineService:
 
     @staticmethod
     def _resolve_trace(task_id: UUID, trace_id: str | None) -> str:
-        return trace_id or str(task_id)
+        # Langfuse trace_context requires W3C hex format (32 chars, no dashes).
+        raw = trace_id or str(task_id)
+        return raw.replace("-", "")
 
     @staticmethod
     def _movie_info(movie: object) -> dict[str, object]:
