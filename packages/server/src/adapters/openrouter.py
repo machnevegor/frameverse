@@ -10,7 +10,7 @@ import yaml
 from langfuse import get_client
 from langfuse.openai import AsyncOpenAI as LangfuseAsyncOpenAI
 
-from src.config import ANN_PROMPT_NAME, EMB_DIMENSIONS, OPENROUTER_BASE_URL, settings
+from src.config import ANN_PROMPT_NAME, EMB_TXT_DIMENSIONS, OPENROUTER_BASE_URL, settings
 from src.domain import SceneTranscript
 from src.protocols.ann import ANNProtocol
 from src.protocols.emb import EMBProtocol
@@ -76,8 +76,8 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
         if not texts:
             return []
         response = await self._client.embeddings.create(
-            model=settings.emb_model,
-            dimensions=EMB_DIMENSIONS,
+            model=settings.emb_txt_model,
+            dimensions=EMB_TXT_DIMENSIONS,
             input=texts,
             trace_id=trace_id,
             metadata=metadata or {},
@@ -96,18 +96,17 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
             return []
 
         payload = {
-            "model": settings.emb_model,
-            "dimensions": EMB_DIMENSIONS,
+            "model": settings.emb_img_model,
             "encoding_format": "float",
             "input": [{"content": [{"type": "image_url", "image_url": {"url": url}}]} for url in image_urls],
         }
-        logger.info("embed_images request", model=settings.emb_model, image_urls=image_urls)
+        logger.info("embed_images request", model=settings.emb_img_model, image_urls=image_urls)
         with self._langfuse.start_as_current_observation(
             as_type="generation",
             name="scene-image-embedding",
             trace_context={"trace_id": trace_id} if trace_id else None,
             metadata=metadata or {},
-            model=settings.emb_model,
+            model=settings.emb_img_model,
             input={"images_count": len(image_urls)},
         ):
             async with httpx.AsyncClient(timeout=60.0) as client:

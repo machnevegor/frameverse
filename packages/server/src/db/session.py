@@ -24,3 +24,23 @@ async def init_db() -> None:
         await conn.run_sync(UUIDAuditBase.metadata.create_all)
         # Keep existing deployments aligned with model nullability for scene video key.
         await conn.execute(text("ALTER TABLE scenes ALTER COLUMN video_s3_key DROP NOT NULL"))
+        # Migrate frames.image_embedding from vector(1024) to halfvec(2048) if needed.
+        await conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF (
+                        SELECT udt_name
+                        FROM information_schema.columns
+                        WHERE table_name = 'frames' AND column_name = 'image_embedding'
+                    ) != 'halfvec' THEN
+                        ALTER TABLE frames
+                        ALTER COLUMN image_embedding TYPE halfvec(2048)
+                        USING CASE WHEN image_embedding IS NULL THEN NULL
+                                   ELSE image_embedding::halfvec(2048) END;
+                    END IF;
+                END $$;
+                """
+            )
+        )

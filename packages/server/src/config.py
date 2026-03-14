@@ -24,7 +24,8 @@ ANN_PROMPT_NAME = "scene-annotation-prompt"
 
 # Embedding
 EMB_CONCURRENCY = 10
-EMB_DIMENSIONS = 1024
+EMB_TXT_DIMENSIONS = 1024
+EMB_IMG_DIMENSIONS = 2048
 
 # URLs
 ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com/v2"
@@ -52,7 +53,8 @@ class Settings(BaseSettings):
     # Model selection
     asr_model: str = Field(alias="ASR_MODEL")
     ann_model: str = Field(alias="ANN_MODEL")
-    emb_model: str = Field(alias="EMB_MODEL")
+    emb_txt_model: str = Field(alias="EMB_TXT_MODEL")
+    emb_img_model: str = Field(alias="EMB_IMG_MODEL")
 
     # Model providers
     assemblyai_api_key: str = Field(alias="ASSEMBLYAI_API_KEY")

@@ -7,11 +7,11 @@ from uuid import UUID
 
 from advanced_alchemy.base import UUIDAuditBase
 from advanced_alchemy.types import JsonB
-from pgvector.sqlalchemy import Vector
+from pgvector.sqlalchemy import HalfVector, Vector
 from sqlalchemy import Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.config import EMB_DIMENSIONS
+from src.config import EMB_IMG_DIMENSIONS, EMB_TXT_DIMENSIONS
 
 
 class TaskModel(UUIDAuditBase):
@@ -115,11 +115,11 @@ class SceneModel(UUIDAuditBase):
 
     # embeddings
     transcript_embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(EMB_DIMENSIONS),
+        Vector(EMB_TXT_DIMENSIONS),
         nullable=True,
     )
     annotation_embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(EMB_DIMENSIONS),
+        Vector(EMB_TXT_DIMENSIONS),
         nullable=True,
     )
 
@@ -164,7 +164,7 @@ class FrameModel(UUIDAuditBase):
 
     # embeddings
     image_embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(EMB_DIMENSIONS),
+        HalfVector(EMB_IMG_DIMENSIONS),
         nullable=True,
     )
 
