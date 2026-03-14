@@ -91,24 +91,28 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
     ) -> list[list[float]]:
         if not image_urls:
             return []
-        # OpenAI SDK sends encoding_format="base64" by default and transforms it client-side;
-        # OpenRouter image embeddings require encoding_format="float" sent as raw HTTP — bypass the SDK.
+
         payload = {
             "model": settings.emb_model,
             "dimensions": EMB_DIMENSIONS,
             "encoding_format": "float",
-            "input": [
-                {"content": [{"type": "image_url", "image_url": {"url": url}}]}
-                for url in image_urls
-            ],
+            "input": [{"content": [{"type": "image_url", "image_url": {"url": url}}]} for url in image_urls],
         }
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{OPENROUTER_BASE_URL}/embeddings",
-                headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-                json=payload,
-            )
-            response.raise_for_status()
+        with self._langfuse.start_as_current_observation(
+            as_type="generation",
+            name="scene-image-embedding",
+            trace_context={"trace_id": trace_id} if trace_id else None,
+            metadata=metadata or {},
+            model=settings.emb_model,
+            input={"images_count": len(image_urls)},
+        ):
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{OPENROUTER_BASE_URL}/embeddings",
+                    headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+                    json=payload,
+                )
+                response.raise_for_status()
         data = response.json()
         # sort by index to guarantee order matches input
         items = sorted(data["data"], key=lambda x: x["index"])
