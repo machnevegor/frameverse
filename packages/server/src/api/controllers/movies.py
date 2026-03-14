@@ -6,7 +6,6 @@ import math
 from uuid import UUID
 
 from litestar import delete, get
-from litestar.connection import Request
 from litestar.exceptions import NotFoundException
 from litestar.response import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,16 +28,6 @@ from src.services.movie import MovieService
 from src.services.scene import SceneService
 from src.services.task import TaskService
 from src.workers.workflows import ProcessMovieWorkflow
-
-
-def _parse_range_header(range_header: str | None) -> tuple[int | None, int | None]:
-    if not range_header or not range_header.startswith("bytes="):
-        return None, None
-    raw = range_header.replace("bytes=", "", 1)
-    start_text, _, end_text = raw.partition("-")
-    start = int(start_text) if start_text else None
-    end = int(end_text) if end_text else None
-    return start, end
 
 
 @get(
@@ -137,23 +126,16 @@ async def delete_movie(session: AsyncSession, temporal_client: Client, movie_id:
     f"{settings.base_path}/movies/{{movie_id:uuid}}/video",
     tags=["Movie"],
     summary="Get movie video",
-    description="Stream movie video file with optional range requests.",
+    description="Redirect to a presigned URL for movie video file.",
 )
-async def stream_movie_video(session: AsyncSession, request: Request, movie_id: UUID) -> Response[bytes]:
+async def stream_movie_video(session: AsyncSession, movie_id: UUID) -> Response[None]:
     movie_service = MovieService(session)
     storage = get_storage()
     movie = await movie_service.get(movie_id)
-    if movie is None:
+    if movie is None or not movie.video_s3_key:
         raise NotFoundException(MOVIE_VIDEO_ERROR[404])
-    start, end = _parse_range_header(request.headers.get("range"))
-    data, content_type, size = await storage.stream_range(movie.video_s3_key, start, end)
-    headers = {"Accept-Ranges": "bytes", "Content-Length": str(size)}
-    return Response(
-        content=data,
-        media_type=content_type,
-        headers=headers,
-        status_code=206 if start is not None else 200,
-    )
+    presigned_url = await storage.generate_presigned_get_url(movie.video_s3_key, expires_in=PRESIGNED_URL_TTL_SEC)
+    return Response(content=None, status_code=302, headers={"Location": presigned_url})
 
 
 @get(
