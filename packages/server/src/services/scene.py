@@ -111,28 +111,38 @@ class SceneService:
                 LEFT JOIN frame_scores fs ON fs.scene_id = s.id
                 WHERE true
                 {movie_filter}
+            ),
+            weighted AS (
+                SELECT
+                    id,
+                    annotation_distance,
+                    transcript_distance,
+                    image_distance,
+                    (
+                        COALESCE(annotation_distance * CAST(:annotation_weight AS double precision), 0) +
+                        COALESCE(transcript_distance * CAST(:transcript_weight AS double precision), 0) +
+                        COALESCE(image_distance * CAST(:image_weight AS double precision), 0)
+                    ) AS weighted_distance_sum,
+                    (
+                        ((annotation_distance IS NOT NULL)::int * CAST(:annotation_weight AS double precision)) +
+                        ((transcript_distance IS NOT NULL)::int * CAST(:transcript_weight AS double precision)) +
+                        ((image_distance IS NOT NULL)::int * CAST(:image_weight AS double precision))
+                    ) AS total_weight
+                FROM scored
+                WHERE (
+                    annotation_distance IS NOT NULL
+                    OR transcript_distance IS NOT NULL
+                    OR image_distance IS NOT NULL
+                )
             )
             SELECT
                 id,
                 annotation_distance,
                 transcript_distance,
                 image_distance,
-                (
-                COALESCE(annotation_distance * CAST(:annotation_weight AS double precision), 0) +
-                COALESCE(transcript_distance * CAST(:transcript_weight AS double precision), 0) +
-                COALESCE(image_distance * CAST(:image_weight AS double precision), 0)
-            ) / NULLIF(
-                ((annotation_distance IS NOT NULL)::int * CAST(:annotation_weight AS double precision)) +
-                ((transcript_distance IS NOT NULL)::int * CAST(:transcript_weight AS double precision)) +
-                ((image_distance IS NOT NULL)::int * CAST(:image_weight AS double precision)),
-                0
-            ) AS distance
-            FROM scored
-            WHERE (
-                annotation_distance IS NOT NULL
-                OR transcript_distance IS NOT NULL
-                OR image_distance IS NOT NULL
-            )
+                weighted_distance_sum / total_weight AS distance
+            FROM weighted
+            WHERE total_weight > 0
             ORDER BY distance
             LIMIT :limit
             """,
