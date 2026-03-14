@@ -2,6 +2,8 @@ services:
   client:
     build:
       context: packages/client
+    env_file:
+      - .env
     labels:
       - traefik.enable=true
       - traefik.docker.network=dokploy-network
@@ -26,6 +28,8 @@ services:
   server:
     build:
       context: packages/server
+    env_file:
+      - .env
     command: ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
     depends_on:
       temporal-create-namespace:
@@ -57,6 +61,8 @@ services:
     image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION}
     container_name: temporal-admin-tools
     restart: on-failure:6
+    env_file:
+      - .env
     environment:
       - DB=postgres12
       - DB_PORT=${TEMPORAL_DB_PORT:-5432}
@@ -77,6 +83,8 @@ services:
     depends_on:
       temporal-admin-tools:
         condition: service_completed_successfully
+    env_file:
+      - .env
     environment:
       - DB=postgres12
       - DB_PORT=${TEMPORAL_DB_PORT:-5432}
@@ -106,6 +114,8 @@ services:
     depends_on:
       temporal:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
       - DEFAULT_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
@@ -121,6 +131,8 @@ services:
     depends_on:
       temporal:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
       - TEMPORAL_CORS_ORIGINS=http://localhost:3000
@@ -134,6 +146,8 @@ services:
   worker:
     build:
       context: packages/server
+    env_file:
+      - .env
     command: ["uv", "run", "python", "-m", "src.workers.run"]
     depends_on:
       temporal-create-namespace:
@@ -147,6 +161,8 @@ services:
   server-migrate:
     build:
       context: packages/server
+    env_file:
+      - .env
     command: ["sh", "-c", "LITESTAR_APP=src.api.app:create_app uv run litestar database upgrade"]
     networks:
       - dokploy-network
