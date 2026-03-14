@@ -8,6 +8,8 @@ from sqlalchemy import delete, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import (
+    EMB_IMG_DIMENSIONS,
+    EMB_TXT_DIMENSIONS,
     SEARCH_SCENES_ANNOTATION_WEIGHT,
     SEARCH_SCENES_IMAGE_WEIGHT,
     SEARCH_SCENES_TRANSCRIPT_WEIGHT,
@@ -96,7 +98,7 @@ class SceneService:
         raw = text(
             f"""
             WITH frame_scores AS (
-                SELECT scene_id, MIN(image_embedding <=> CAST(:vec AS vector)) AS best_img_dist
+                SELECT scene_id, MIN(image_embedding <=> CAST(:img_vec AS halfvec({EMB_IMG_DIMENSIONS}))) AS best_img_dist
                 FROM frames
                 WHERE image_embedding IS NOT NULL
                 GROUP BY scene_id
@@ -104,8 +106,8 @@ class SceneService:
             scored AS (
                 SELECT
                     s.id,
-                    s.annotation_embedding <=> CAST(:vec AS vector) AS annotation_distance,
-                    s.transcript_embedding <=> CAST(:vec AS vector) AS transcript_distance,
+                    s.annotation_embedding <=> CAST(:txt_vec AS vector({EMB_TXT_DIMENSIONS})) AS annotation_distance,
+                    s.transcript_embedding <=> CAST(:txt_vec AS vector({EMB_TXT_DIMENSIONS})) AS transcript_distance,
                     fs.best_img_dist AS image_distance
                 FROM scenes s
                 LEFT JOIN frame_scores fs ON fs.scene_id = s.id
@@ -148,7 +150,8 @@ class SceneService:
             """,
         )
         params: dict[str, str | int | float] = {
-            "vec": vec_str,
+            "txt_vec": vec_str,
+            "img_vec": vec_str,
             "limit": limit,
             "annotation_weight": SEARCH_SCENES_ANNOTATION_WEIGHT,
             "transcript_weight": SEARCH_SCENES_TRANSCRIPT_WEIGHT,
