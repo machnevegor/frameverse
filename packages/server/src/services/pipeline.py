@@ -382,6 +382,7 @@ class PipelineService:
         transcript_obj = SceneTranscript.model_validate(scene.transcript)
         transcript_text = "\n".join(segment.text for segment in transcript_obj.scene_segments)
         frame_urls = [_api_url("frames", str(frame.id), "image") for frame in frames]
+        logger.info("embed_scene started", scene_id=str(scene.id), frame_urls=frame_urls)
 
         with self.langfuse.start_as_current_observation(
             as_type="span",
@@ -421,8 +422,11 @@ class PipelineService:
 
         scene.annotation_embedding = annotation_vectors[0] if annotation_vectors else None
         scene.transcript_embedding = transcript_vectors[0] if transcript_vectors else None
-        for frame, vector in zip(frames, image_vectors, strict=True):
-            frame.image_embedding = vector
+        if image_vectors:
+            for frame, vector in zip(frames, image_vectors, strict=True):
+                frame.image_embedding = vector
+        else:
+            logger.warning("image embeddings skipped, frame embeddings will be null", scene_id=str(scene.id))
 
         await self.task_service.increment_progress(task_id, "scenes_embedded")
         await self.session.flush()

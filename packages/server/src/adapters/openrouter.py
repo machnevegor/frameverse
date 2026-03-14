@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+import structlog
 import yaml
 from langfuse import get_client
 from langfuse.openai import AsyncOpenAI as LangfuseAsyncOpenAI
@@ -13,6 +14,8 @@ from src.config import ANN_PROMPT_NAME, EMB_DIMENSIONS, OPENROUTER_BASE_URL, set
 from src.domain import SceneTranscript
 from src.protocols.ann import ANNProtocol
 from src.protocols.emb import EMBProtocol
+
+logger = structlog.get_logger(__name__)
 
 
 class OpenRouterAdapter(ANNProtocol, EMBProtocol):
@@ -98,6 +101,7 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
             "encoding_format": "float",
             "input": [{"content": [{"type": "image_url", "image_url": {"url": url}}]} for url in image_urls],
         }
+        logger.info("embed_images request", model=settings.emb_model, image_urls=image_urls)
         with self._langfuse.start_as_current_observation(
             as_type="generation",
             name="scene-image-embedding",
