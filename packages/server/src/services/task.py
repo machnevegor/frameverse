@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import desc, func, select, text
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.models import TaskModel
@@ -108,21 +108,13 @@ class TaskService:
     async def increment_progress(self, task_id: UUID, field: str) -> None:
         if field not in _PROGRESS_FIELDS:
             raise ValueError(f"Unsupported progress field: {field}")
-
-        await self.session.execute(
-            text(f"""
-                UPDATE tasks
-                SET progress = jsonb_set(
-                    COALESCE(progress, :default_progress::jsonb),
-                    '{{{field}}}',
-                    to_jsonb(COALESCE((progress->>'{field}')::int, 0) + 1),
-                    true
-                )
-                WHERE id = :task_id
-            """),
-            {
-                "default_progress": '{"scenes_detected":0,"scenes_extracted":0,"scenes_annotated":0,"scenes_embedded":0}',
-                "task_id": str(task_id),
-            },
-        )
+        task = await self.get(task_id)
+        if task is None:
+            return
+        progress: dict[str, int] = {f: 0 for f in _PROGRESS_FIELDS}
+        if task.progress:
+            for f in _PROGRESS_FIELDS:
+                progress[f] = int(task.progress.get(f, 0))
+        progress[field] += 1
+        task.progress = progress
         await self.session.flush()
