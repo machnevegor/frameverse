@@ -11,6 +11,7 @@ import structlog
 from langfuse import get_client
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.controllers._mappers import _api_url
 from src.config import (
     ANN_PREVIOUS_SCENES_CONTEXT_NUM,
     ANN_TRANSCRIPT_SIDE_CONTEXT_SEC,
@@ -374,10 +375,7 @@ class PipelineService:
             annotation_text = scene.annotation["text"]
         transcript_obj = SceneTranscript.model_validate(scene.transcript)
         transcript_text = "\n".join(segment.text for segment in transcript_obj.scene_segments)
-        frame_urls = [
-            await self.storage.generate_presigned_get_url(frame.image_s3_key, expires_in=PRESIGNED_URL_TTL_SEC)
-            for frame in frames
-        ]
+        frame_urls = [_api_url("frames", str(frame.id), "image") for frame in frames]
 
         with self.langfuse.start_as_current_observation(
             as_type="span",
