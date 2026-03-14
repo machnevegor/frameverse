@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 import yaml
 from langfuse import get_client
 from langfuse.openai import AsyncOpenAI as LangfuseAsyncOpenAI
@@ -90,15 +91,28 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
     ) -> list[list[float]]:
         if not image_urls:
             return []
-        response = await self._client.embeddings.create(
-            model=settings.emb_model,
-            dimensions=EMB_DIMENSIONS,
-            input=[{"content": [{"type": "image_url", "image_url": {"url": url}}]} for url in image_urls],
-            trace_id=trace_id,
-            metadata=metadata or {},
-            name="scene-image-embedding",
-        )
-        return [list(item.embedding) for item in response.data]
+        # OpenAI SDK sends encoding_format="base64" by default and transforms it client-side;
+        # OpenRouter image embeddings require encoding_format="float" sent as raw HTTP — bypass the SDK.
+        payload = {
+            "model": settings.emb_model,
+            "dimensions": EMB_DIMENSIONS,
+            "encoding_format": "float",
+            "input": [
+                {"content": [{"type": "image_url", "image_url": {"url": url}}]}
+                for url in image_urls
+            ],
+        }
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{OPENROUTER_BASE_URL}/embeddings",
+                headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+                json=payload,
+            )
+            response.raise_for_status()
+        data = response.json()
+        # sort by index to guarantee order matches input
+        items = sorted(data["data"], key=lambda x: x["index"])
+        return [item["embedding"] for item in items]
 
     @staticmethod
     def _render_annotation_payload(
