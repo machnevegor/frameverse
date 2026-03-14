@@ -7,7 +7,7 @@ from uuid import UUID
 
 from advanced_alchemy.base import UUIDAuditBase
 from advanced_alchemy.types import JsonB
-from pgvector.sqlalchemy import HalfVector, Vector
+from pgvector.sqlalchemy import HALFVEC, Vector
 from sqlalchemy import Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -164,7 +164,7 @@ class FrameModel(UUIDAuditBase):
 
     # embeddings
     image_embedding: Mapped[list[float] | None] = mapped_column(
-        HalfVector(EMB_IMG_DIMENSIONS),
+        HALFVEC(EMB_IMG_DIMENSIONS),
         nullable=True,
     )
 
