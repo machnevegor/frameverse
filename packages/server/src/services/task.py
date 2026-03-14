@@ -114,7 +114,8 @@ class TaskService:
         default = func.cast(json.dumps({f: 0 for f in _PROGRESS_FIELDS}), JSONB)
         # field is validated against _PROGRESS_FIELDS whitelist above, safe to inline
         path = literal_column(f"'{{{field}}}'")
-        current = cast(TaskModel.progress[field].astext, Integer)
+        # jsonb_extract_path_text is equivalent to ->>, avoids .astext which fails on BinaryExpression
+        current = cast(func.jsonb_extract_path_text(TaskModel.progress, field), Integer)
         stmt = (
             update(TaskModel)
             .where(TaskModel.id == task_id)
