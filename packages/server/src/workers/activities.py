@@ -28,7 +28,7 @@ async def update_status_activity(task_id: str, status: str) -> None:
 async def extract_audio_activity(task_id: str) -> str:
     async with SessionLocal() as session:
         pipeline = build_pipeline_service(session)
-        audio_s3_key = await pipeline.extract_audio(UUID(task_id), trace_id=task_id)
+        audio_s3_key = await pipeline.extract_audio(UUID(task_id))
         await session.commit()
         return audio_s3_key
 
@@ -37,7 +37,7 @@ async def extract_audio_activity(task_id: str) -> str:
 async def transcribe_activity(task_id: str) -> None:
     async with SessionLocal() as session:
         pipeline = build_pipeline_service(session)
-        await pipeline.transcribe(UUID(task_id), trace_id=task_id)
+        await pipeline.transcribe(UUID(task_id))
         await session.commit()
 
 
@@ -52,7 +52,7 @@ async def detect_scenes_activity(task_id: str) -> list[str]:
     try:
         async with SessionLocal() as session:
             pipeline = build_pipeline_service(session)
-            scene_ids = await pipeline.detect_scenes(UUID(task_id), trace_id=task_id)
+            scene_ids = await pipeline.detect_scenes(UUID(task_id))
             await session.commit()
             return [str(scene_id) for scene_id in scene_ids]
     finally:
@@ -73,7 +73,6 @@ async def materialize_scenes_activity(task_id: str, scene_ids: list[str]) -> Non
             await pipeline.materialize_scenes(
                 UUID(task_id),
                 [UUID(scene_id) for scene_id in scene_ids],
-                trace_id=task_id,
             )
             await session.commit()
     finally:
@@ -84,7 +83,7 @@ async def materialize_scenes_activity(task_id: str, scene_ids: list[str]) -> Non
 async def annotate_scene_activity(task_id: str, scene_id: str) -> None:
     async with SessionLocal() as session:
         pipeline = build_pipeline_service(session)
-        await pipeline.annotate_scene(UUID(task_id), UUID(scene_id), trace_id=task_id)
+        await pipeline.annotate_scene(UUID(task_id), UUID(scene_id))
         await session.commit()
 
 
@@ -92,7 +91,7 @@ async def annotate_scene_activity(task_id: str, scene_id: str) -> None:
 async def embed_scene_activity(task_id: str, scene_id: str) -> None:
     async with SessionLocal() as session:
         pipeline = build_pipeline_service(session)
-        await pipeline.embed_scene(UUID(task_id), UUID(scene_id), trace_id=task_id)
+        await pipeline.embed_scene(UUID(task_id), UUID(scene_id))
         await session.commit()
 
 

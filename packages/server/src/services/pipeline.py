@@ -65,10 +65,10 @@ class PipelineService:
         self.frame_service = FrameService(session)
         self.langfuse = get_client()
 
-    async def extract_audio(self, task_id: UUID, *, trace_id: str | None = None) -> str:
+    async def extract_audio(self, task_id: UUID) -> str:
         task = await self._get_task(task_id)
         movie = await self._get_movie(task.movie_id)
-        trace = self._resolve_trace(task_id, trace_id)
+        trace = task.langfuse_trace_id
 
         with self.langfuse.start_as_current_observation(
             as_type="span",
@@ -107,13 +107,13 @@ class PipelineService:
                 await self.session.flush()
                 return audio_s3_key
 
-    async def transcribe(self, task_id: UUID, *, trace_id: str | None = None) -> None:
+    async def transcribe(self, task_id: UUID) -> None:
         task = await self._get_task(task_id)
         movie = await self._get_movie(task.movie_id)
         if movie.audio_s3_key is None:
             raise LookupError("Movie audio not found")
 
-        trace = self._resolve_trace(task_id, trace_id)
+        trace = task.langfuse_trace_id
         with self.langfuse.start_as_current_observation(
             as_type="span",
             name="pipeline.transcribe",
@@ -133,10 +133,10 @@ class PipelineService:
             movie.transcript = [segment.model_dump(mode="json") for segment in result.segments]
             await self.session.flush()
 
-    async def detect_scenes(self, task_id: UUID, *, trace_id: str | None = None) -> list[UUID]:
+    async def detect_scenes(self, task_id: UUID) -> list[UUID]:
         task = await self._get_task(task_id)
         movie = await self._get_movie(task.movie_id)
-        trace = self._resolve_trace(task_id, trace_id)
+        trace = task.langfuse_trace_id
 
         with self.langfuse.start_as_current_observation(
             as_type="span",
@@ -176,10 +176,10 @@ class PipelineService:
             await self.session.flush()
             return scene_ids
 
-    async def materialize_scenes(self, task_id: UUID, scene_ids: list[UUID], *, trace_id: str | None = None) -> None:
+    async def materialize_scenes(self, task_id: UUID, scene_ids: list[UUID]) -> None:
         task = await self._get_task(task_id)
         movie = await self._get_movie(task.movie_id)
-        trace = self._resolve_trace(task_id, trace_id)
+        trace = task.langfuse_trace_id
 
         all_scenes = await self.scene_service.list_by_movie(movie.id)
         selected = {scene_id for scene_id in scene_ids}
@@ -212,7 +212,7 @@ class PipelineService:
                 semaphore = asyncio.Semaphore(SBE_CONCURRENCY)
                 transcript_source = movie.transcript or []
 
-                async def _handle_scene(scene: SceneModel, clip_index: int) -> None:
+                async def _prepare_scene(scene: SceneModel, clip_index: int) -> tuple[SceneModel, str, SceneTranscript, list[tuple[int, float, float, str]]]:
                     async with semaphore:
                         clip_path = clip_paths.get(clip_index)
                         if clip_path is None:
@@ -230,37 +230,43 @@ class PipelineService:
                             min_score_percentile=KEYFRAMES_MIN_SCORE_PERCENTILE,
                         )
 
-                        await self.frame_service.delete_by_scene(scene.id)
+                        frame_rows: list[tuple[int, float, float, str]] = []
                         for position, keyframe in enumerate(keyframes):
                             frame_key = f"{scene_prefix}/frames/{position:06d}.jpg"
                             await self.storage.upload(frame_key, keyframe.image_data, "image/jpeg")
-                            await self.frame_service.create(
-                                movie_id=movie.id,
-                                scene_id=scene.id,
-                                position=position,
-                                timestamp=keyframe.timestamp,
-                                score=keyframe.score,
-                                image_s3_key=frame_key,
-                            )
+                            frame_rows.append((position, keyframe.timestamp, keyframe.score, frame_key))
 
                         scene_transcript = self._slice_transcript(
                             transcript_source,
                             scene_start=float(scene.start),
                             scene_end=float(scene.end),
                         )
-                        scene.video_s3_key = scene_video_key
-                        scene.transcript = scene_transcript.model_dump(mode="json")
-                        await self.task_service.increment_progress(task_id, "scenes_extracted")
-                        await self.session.flush()
+                        return scene, scene_video_key, scene_transcript, frame_rows
 
-                # NOTE: preserve deterministic mapping of scenes to extracted clip index.
-                await asyncio.gather(*(_handle_scene(scene, index) for index, scene in enumerate(scenes)))
+                # SQLAlchemy AsyncSession is not safe for concurrent DB operations.
+                prepared = await asyncio.gather(*(_prepare_scene(scene, index) for index, scene in enumerate(scenes)))
+                for scene, scene_video_key, scene_transcript, frame_rows in prepared:
+                    await self.frame_service.delete_by_scene(scene.id)
+                    for position, timestamp, score, frame_key in frame_rows:
+                        await self.frame_service.create(
+                            movie_id=movie.id,
+                            scene_id=scene.id,
+                            position=position,
+                            timestamp=timestamp,
+                            score=score,
+                            image_s3_key=frame_key,
+                        )
 
-    async def annotate_scene(self, task_id: UUID, scene_id: UUID, *, trace_id: str | None = None) -> None:
+                    scene.video_s3_key = scene_video_key
+                    scene.transcript = scene_transcript.model_dump(mode="json")
+                    await self.task_service.increment_progress(task_id, "scenes_extracted")
+                    await self.session.flush()
+
+    async def annotate_scene(self, task_id: UUID, scene_id: UUID) -> None:
         task = await self._get_task(task_id)
         movie = await self._get_movie(task.movie_id)
         scene = await self._get_scene(scene_id)
-        trace = self._resolve_trace(task_id, trace_id)
+        trace = task.langfuse_trace_id
 
         scene.status = "ann"
         await self.session.flush()
@@ -298,11 +304,11 @@ class PipelineService:
         await self.task_service.increment_progress(task_id, "scenes_annotated")
         await self.session.flush()
 
-    async def embed_scene(self, task_id: UUID, scene_id: UUID, *, trace_id: str | None = None) -> None:
+    async def embed_scene(self, task_id: UUID, scene_id: UUID) -> None:
         task = await self._get_task(task_id)
         movie = await self._get_movie(task.movie_id)
         scene = await self._get_scene(scene_id)
-        trace = self._resolve_trace(task_id, trace_id)
+        trace = task.langfuse_trace_id
 
         scene.status = "emb"
         await self.session.flush()
@@ -383,12 +389,6 @@ class PipelineService:
         if scene is None:
             raise LookupError("Scene not found")
         return scene
-
-    @staticmethod
-    def _resolve_trace(task_id: UUID, trace_id: str | None) -> str:
-        # Langfuse trace_context requires W3C hex format (32 chars, no dashes).
-        raw = trace_id or str(task_id)
-        return raw.replace("-", "")
 
     @staticmethod
     def _movie_info(movie: object) -> dict[str, object]:
