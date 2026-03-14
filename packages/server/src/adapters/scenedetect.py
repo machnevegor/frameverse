@@ -51,8 +51,6 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
         batch_start = split_times[0]
 
         if len(split_times) == 1:
-            # Single segment still needs re-encode so clips starting mid-movie
-            # begin with a decodable intra frame.
             cmd = [
                 "ffmpeg",
                 "-hide_banner",
@@ -65,29 +63,14 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
                 "-i",
                 source,
                 "-map",
-                "0:v:0",
-                "-map",
-                "0:a?",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "21",
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-movflags",
-                "+faststart",
+                "0",
+                "-c",
+                "copy",
                 str(output_path / "part_000000.mp4"),
             ]
         else:
             relative_times = [split_time - batch_start for split_time in split_times[1:]]
             segment_times = ",".join(f"{t:.9f}" for t in relative_times)
-            # Force keyframes exactly at split boundaries to guarantee every produced
-            # clip starts with a decodable intra frame.
-            force_keyframes = ",".join(f"{t:.9f}" for t in relative_times)
             cmd = [
                 "ffmpeg",
                 "-hide_banner",
@@ -100,25 +83,13 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
                 "-i",
                 source,
                 "-map",
-                "0:v:0",
-                "-map",
-                "0:a?",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "21",
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-movflags",
-                "+faststart",
-                "-force_key_frames",
-                force_keyframes,
+                "0",
+                "-c",
+                "copy",
                 "-f",
                 "segment",
+                "-break_non_keyframes",
+                "1",
                 "-reset_timestamps",
                 "1",
                 "-segment_times",
