@@ -111,7 +111,7 @@ class SceneModel(UUIDAuditBase):
     annotation: Mapped[dict[str, Any] | None] = mapped_column(JsonB, nullable=True)
 
     # object storage
-    video_s3_key: Mapped[str] = mapped_column(String(length=1024), nullable=False)
+    video_s3_key: Mapped[str | None] = mapped_column(String(length=1024), nullable=True)
 
     # embeddings
     transcript_embedding: Mapped[list[float] | None] = mapped_column(

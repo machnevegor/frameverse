@@ -106,7 +106,7 @@ async def create_task(
         movie_title=movie.title,
         status="queued",
         temporal_workflow_id=str(task_id),
-        langfuse_trace_id=str(task_id),
+        langfuse_trace_id=task_id.hex,
     )
     await session.commit()
     await temporal_client.start_workflow(
