@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from uuid import UUID
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import Integer, cast, desc, func, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import literal_column
 
 from src.db.models import TaskModel
 from src.domain import NonTerminalMovieStatus, Progress
@@ -108,13 +111,20 @@ class TaskService:
     async def increment_progress(self, task_id: UUID, field: str) -> None:
         if field not in _PROGRESS_FIELDS:
             raise ValueError(f"Unsupported progress field: {field}")
-        task = await self.get(task_id)
-        if task is None:
-            return
-        progress: dict[str, int] = {f: 0 for f in _PROGRESS_FIELDS}
-        if task.progress:
-            for f in _PROGRESS_FIELDS:
-                progress[f] = int(task.progress.get(f, 0))
-        progress[field] += 1
-        task.progress = progress
-        await self.session.flush()
+        default = func.cast(json.dumps({f: 0 for f in _PROGRESS_FIELDS}), JSONB)
+        # field is validated against _PROGRESS_FIELDS whitelist above, safe to inline
+        path = literal_column(f"'{{{field}}}'")
+        current = cast(TaskModel.progress[field].astext, Integer)
+        stmt = (
+            update(TaskModel)
+            .where(TaskModel.id == task_id)
+            .values(
+                progress=func.jsonb_set(
+                    func.coalesce(TaskModel.progress, default),
+                    path,
+                    func.to_jsonb(func.coalesce(current, 0) + 1),
+                    True,
+                )
+            )
+        )
+        await self.session.execute(stmt)
