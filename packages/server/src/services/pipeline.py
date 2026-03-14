@@ -212,7 +212,9 @@ class PipelineService:
                 semaphore = asyncio.Semaphore(SBE_CONCURRENCY)
                 transcript_source = movie.transcript or []
 
-                async def _prepare_scene(scene: SceneModel, clip_index: int) -> tuple[SceneModel, str, SceneTranscript, list[tuple[int, float, float, str]]]:
+                async def _prepare_scene(
+                    scene: SceneModel, clip_index: int
+                ) -> tuple[SceneModel, str, SceneTranscript, list[tuple[int, float, float, str]]]:
                     async with semaphore:
                         clip_path = clip_paths.get(clip_index)
                         if clip_path is None:

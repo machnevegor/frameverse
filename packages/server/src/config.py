@@ -30,6 +30,8 @@ EMB_DIMENSIONS = 1024
 ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com/v2"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 PRESIGNED_URL_TTL_SEC = 3600
+SUPPORTED_VIDEO_UPLOAD_TYPES = ("video/mp4",)
+SUPPORTED_IMAGE_UPLOAD_TYPES = ("image/webp",)
 
 
 class Settings(BaseSettings):

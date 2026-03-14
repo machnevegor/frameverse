@@ -1,6 +1,10 @@
 """OpenAPI error message constants."""
 
-PRESIGN_ERROR = {415: "Content type is not supported"}
+from src.config import SUPPORTED_IMAGE_UPLOAD_TYPES, SUPPORTED_VIDEO_UPLOAD_TYPES
+
+_SUPPORTED_UPLOAD_TYPES = SUPPORTED_VIDEO_UPLOAD_TYPES + SUPPORTED_IMAGE_UPLOAD_TYPES
+
+PRESIGN_ERROR = {415: f"Content type is not supported. Use {', '.join(_SUPPORTED_UPLOAD_TYPES)}"}
 CREATE_TASK_ERROR = {
     400: "Request body is missing or the video file is invalid",
     404: "Video file not found in storage",

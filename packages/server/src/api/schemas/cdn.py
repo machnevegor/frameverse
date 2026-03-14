@@ -4,11 +4,18 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, HttpUrl
 
+from src.config import SUPPORTED_IMAGE_UPLOAD_TYPES, SUPPORTED_VIDEO_UPLOAD_TYPES
+
+_SUPPORTED_UPLOAD_TYPES = ", ".join([*SUPPORTED_VIDEO_UPLOAD_TYPES, *SUPPORTED_IMAGE_UPLOAD_TYPES])
+
 
 class PresignInput(BaseModel):
     """This object represents the input for generating a presigned upload URL."""
 
-    content_type: str = Field(default="video/mp4", description="MIME type of the video file.")
+    content_type: str = Field(
+        default="video/mp4",
+        description=f"MIME type of the file to upload. Supported: {_SUPPORTED_UPLOAD_TYPES}.",
+    )
 
 
 class PresignData(BaseModel):
