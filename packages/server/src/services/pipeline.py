@@ -70,7 +70,8 @@ class PipelineService:
         movie = await self._get_movie(task.movie_id)
         trace = self._resolve_trace(task_id, trace_id)
 
-        with self.langfuse.start_as_current_span(
+        with self.langfuse.start_as_current_observation(
+            as_type="span",
             name="pipeline.extract_audio",
             trace_context={"trace_id": trace},
             metadata={"task_id": str(task_id), "movie_id": str(movie.id), "stage": "asr"},
@@ -113,7 +114,8 @@ class PipelineService:
             raise LookupError("Movie audio not found")
 
         trace = self._resolve_trace(task_id, trace_id)
-        with self.langfuse.start_as_current_span(
+        with self.langfuse.start_as_current_observation(
+            as_type="span",
             name="pipeline.transcribe",
             trace_context={"trace_id": trace},
             metadata={"task_id": str(task_id), "movie_id": str(movie.id), "stage": "asr"},
@@ -136,7 +138,8 @@ class PipelineService:
         movie = await self._get_movie(task.movie_id)
         trace = self._resolve_trace(task_id, trace_id)
 
-        with self.langfuse.start_as_current_span(
+        with self.langfuse.start_as_current_observation(
+            as_type="span",
             name="pipeline.detect_scenes",
             trace_context={"trace_id": trace},
             metadata={"task_id": str(task_id), "movie_id": str(movie.id), "stage": "sbd"},
@@ -185,7 +188,8 @@ class PipelineService:
         if not scenes:
             return
 
-        with self.langfuse.start_as_current_span(
+        with self.langfuse.start_as_current_observation(
+            as_type="span",
             name="pipeline.materialize_scenes",
             trace_context={"trace_id": trace},
             metadata={"task_id": str(task_id), "movie_id": str(movie.id), "stage": "sbe"},
@@ -274,7 +278,8 @@ class PipelineService:
             if item.position < scene.position and item.annotation and isinstance(item.annotation.get("text"), str)
         ][-ANN_PREVIOUS_SCENES_CONTEXT_NUM:]
 
-        with self.langfuse.start_as_current_span(
+        with self.langfuse.start_as_current_observation(
+            as_type="span",
             name="pipeline.annotate_scene",
             trace_context={"trace_id": trace},
             metadata={"task_id": str(task_id), "movie_id": str(movie.id), "scene_id": str(scene.id), "stage": "ann"},
@@ -313,7 +318,8 @@ class PipelineService:
             for frame in frames
         ]
 
-        with self.langfuse.start_as_current_span(
+        with self.langfuse.start_as_current_observation(
+            as_type="span",
             name="pipeline.embed_scene",
             trace_context={"trace_id": trace},
             metadata={"task_id": str(task_id), "movie_id": str(movie.id), "scene_id": str(scene.id), "stage": "emb"},

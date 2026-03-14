@@ -85,7 +85,8 @@ class AssemblyAIAdapter(ASRProtocol):
         if trace_id is None:
             return await self._transcribe_impl(audio_url)
 
-        with langfuse.start_as_current_span(
+        with langfuse.start_as_current_observation(
+            as_type="span",
             name="assemblyai.transcribe",
             trace_context={"trace_id": trace_id},
             input={"audio_url": audio_url},
