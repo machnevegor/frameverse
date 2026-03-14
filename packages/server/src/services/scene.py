@@ -118,13 +118,13 @@ class SceneService:
                 transcript_distance,
                 image_distance,
                 (
-                COALESCE(annotation_distance * :annotation_weight, 0) +
-                COALESCE(transcript_distance * :transcript_weight, 0) +
-                COALESCE(image_distance * :image_weight, 0)
+                COALESCE(annotation_distance * CAST(:annotation_weight AS double precision), 0) +
+                COALESCE(transcript_distance * CAST(:transcript_weight AS double precision), 0) +
+                COALESCE(image_distance * CAST(:image_weight AS double precision), 0)
             ) / NULLIF(
-                ((annotation_distance IS NOT NULL)::int * :annotation_weight) +
-                ((transcript_distance IS NOT NULL)::int * :transcript_weight) +
-                ((image_distance IS NOT NULL)::int * :image_weight),
+                ((annotation_distance IS NOT NULL)::int * CAST(:annotation_weight AS double precision)) +
+                ((transcript_distance IS NOT NULL)::int * CAST(:transcript_weight AS double precision)) +
+                ((image_distance IS NOT NULL)::int * CAST(:image_weight AS double precision)),
                 0
             ) AS distance
             FROM scored
