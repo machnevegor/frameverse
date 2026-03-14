@@ -1,0 +1,96 @@
+"""Scene and search endpoints."""
+
+from __future__ import annotations
+
+from uuid import UUID
+
+from litestar import get, post
+from litestar.exceptions import ClientException, NotFoundException
+from litestar.response import Response
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.api.controllers._mappers import to_frame, to_scene
+from src.api.errors import READ_SCENE_ERROR, SCENE_FRAMES_ERROR, SCENE_VIDEO_ERROR, SEARCH_SCENES_ERROR
+from src.api.schemas.scenes import (
+    ListSceneFramesResult,
+    ReadSceneResult,
+    SceneSearchHit,
+    SearchScenesInput,
+    SearchScenesResult,
+)
+from src.config import PRESIGNED_URL_TTL_SEC, settings
+from src.services.factory import get_emb, get_storage
+from src.services.frame import FrameService
+from src.services.scene import SceneService
+
+
+@post(
+    f"{settings.base_path}/search/scenes",
+    tags=["Search"],
+    summary="Search scenes",
+    description="Semantic scene search over transcript, annotation and visual embeddings.",
+)
+async def search_scenes(session: AsyncSession, data: SearchScenesInput) -> SearchScenesResult:
+    if not data.query.strip():
+        raise ClientException(status_code=400, detail=SEARCH_SCENES_ERROR[400])
+
+    emb = get_emb()
+    scene_service = SceneService(session)
+    vectors = await emb.embed_texts([data.query])
+    query_vector = vectors[0]
+    results = await scene_service.search(query_vector, movie_id=data.movie_id, limit=data.limit)
+
+    hits = []
+    for scene_model, distance in results:
+        scene = to_scene(scene_model)
+        score = max(0.0, min(1.0, 1.0 - (distance / 2.0)))
+        payload = scene.model_dump(mode="json")
+        payload["score"] = score
+        hits.append(SceneSearchHit.model_validate(payload))
+    return SearchScenesResult(data=hits)
+
+
+@get(
+    f"{settings.base_path}/scenes/{{scene_id:uuid}}",
+    tags=["Scene"],
+    summary="Get scene",
+    description="Get scene by identifier.",
+)
+async def read_scene(session: AsyncSession, scene_id: UUID) -> ReadSceneResult:
+    scene_service = SceneService(session)
+    scene = await scene_service.get(scene_id)
+    if scene is None:
+        raise NotFoundException(READ_SCENE_ERROR[404])
+    return ReadSceneResult(data=to_scene(scene))
+
+
+@get(
+    f"{settings.base_path}/scenes/{{scene_id:uuid}}/video",
+    tags=["Scene"],
+    summary="Get scene video",
+    description="Redirect to a presigned URL for scene video clip.",
+)
+async def stream_scene_video(session: AsyncSession, scene_id: UUID) -> Response[None]:
+    scene_service = SceneService(session)
+    storage = get_storage()
+    scene = await scene_service.get(scene_id)
+    if scene is None or not scene.video_s3_key:
+        raise NotFoundException(SCENE_VIDEO_ERROR[404])
+    presigned_url = await storage.generate_presigned_get_url(scene.video_s3_key, expires_in=PRESIGNED_URL_TTL_SEC)
+    return Response(content=None, status_code=302, headers={"Location": presigned_url})
+
+
+@get(
+    f"{settings.base_path}/scenes/{{scene_id:uuid}}/frames",
+    tags=["Scene"],
+    summary="List scene frames",
+    description="List all keyframes of a scene.",
+)
+async def list_scene_frames(session: AsyncSession, scene_id: UUID) -> ListSceneFramesResult:
+    scene_service = SceneService(session)
+    frame_service = FrameService(session)
+    scene = await scene_service.get(scene_id)
+    if scene is None:
+        raise NotFoundException(SCENE_FRAMES_ERROR[404])
+    frames = await frame_service.list_by_scene(scene_id)
+    return ListSceneFramesResult(data=[to_frame(frame) for frame in frames])

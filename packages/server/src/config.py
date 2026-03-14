@@ -1,0 +1,71 @@
+"""Application settings and pipeline constants."""
+
+from pydantic import Field
+from pydantic_settings import BaseSettings
+
+# Shot boundary detection
+SBD_THRESHOLD = 55.0
+
+# Shot boundary extraction
+SBE_CONCURRENCY = 10
+SBE_QUEUE_SIZE = 256
+SBE_POLL_INTERVAL_SEC = 0.25
+
+# Keyframes
+KEYFRAMES_PER_SCENE = 5
+KEYFRAMES_MIN_GAP_SEC = 2.0
+KEYFRAMES_MIN_SCORE_PERCENTILE = 75
+
+# Annotation
+ANN_CONCURRENCY = 10
+ANN_PREVIOUS_SCENES_CONTEXT_NUM = 5
+ANN_TRANSCRIPT_SIDE_CONTEXT_SEC = 15.0
+
+# Embedding
+EMB_CONCURRENCY = 10
+EMB_DIMENSIONS = 1024
+
+# URLs
+ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com/v2"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+PRESIGNED_URL_TTL_SEC = 3600
+
+
+class Settings(BaseSettings):
+    # DB
+    database_url: str = Field(alias="DATABASE_URL")
+
+    # App
+    base_url: str = Field(alias="BASE_URL")
+    base_path: str = Field(alias="BASE_PATH")
+
+    # S3
+    s3_endpoint_url: str = Field(alias="S3_ENDPOINT_URL")
+    s3_region: str = Field(alias="S3_REGION")
+    s3_bucket: str = Field(alias="S3_BUCKET")
+    s3_access_key_id: str = Field(alias="S3_ACCESS_KEY_ID")
+    s3_secret_access_key: str = Field(alias="S3_SECRET_ACCESS_KEY")
+
+    # Model selection
+    asr_model: str = Field(alias="ASR_MODEL")
+    ann_model: str = Field(alias="ANN_MODEL")
+    emb_model: str = Field(alias="EMB_MODEL")
+
+    # Model providers
+    assemblyai_api_key: str = Field(alias="ASSEMBLYAI_API_KEY")
+    openrouter_api_key: str = Field(alias="OPENROUTER_API_KEY")
+
+    # Temporal
+    temporal_address: str = Field(alias="TEMPORAL_ADDRESS")
+    temporal_namespace: str = Field(alias="TEMPORAL_NAMESPACE")
+    temporal_task_queue: str = Field(alias="TEMPORAL_TASK_QUEUE")
+    temporal_public_url: str = Field(alias="TEMPORAL_PUBLIC_URL")
+
+    # Observability
+    langfuse_public_key: str = Field(alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key: str = Field(alias="LANGFUSE_SECRET_KEY")
+    langfuse_base_url: str = Field(alias="LANGFUSE_BASE_URL")
+    langfuse_public_url: str = Field(alias="LANGFUSE_PUBLIC_URL")
+
+
+settings = Settings()
