@@ -61,7 +61,7 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
                 str(output_path / "part_000000.mp4"),
             ]
         else:
-            segment_times = ",".join(f"{t:.6f}" for t in split_times[1:])
+            segment_times = ",".join(f"{t:.9f}" for t in split_times[1:])
             cmd = [
                 "ffmpeg",
                 "-hide_banner",
@@ -77,6 +77,9 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
                 "copy",
                 "-f",
                 "segment",
+                # force splits even between keyframes so every boundary produces a clip
+                "-break_non_keyframes",
+                "1",
                 "-reset_timestamps",
                 "1",
                 "-segment_times",

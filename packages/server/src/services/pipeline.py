@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 from uuid import UUID
 
+import structlog
 from langfuse import get_client
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +38,8 @@ from src.services.frame import FrameService
 from src.services.movie import MovieService
 from src.services.scene import SceneService
 from src.services.task import TaskService
+
+logger = structlog.get_logger(__name__)
 
 
 class PipelineService:
@@ -218,6 +221,14 @@ class PipelineService:
                 # clip_index - offset = index into `scenes`; preamble clip (index 0) is discarded
                 offset = 1 if has_preamble else 0
 
+                logger.info(
+                    "materialize_scenes started",
+                    scenes=len(scenes),
+                    split_times=len(split_times),
+                    offset=offset,
+                    preamble=has_preamble,
+                )
+
                 queue: asyncio.Queue[tuple[int, Path] | None] = asyncio.Queue(SBE_QUEUE_SIZE)
                 transcript_source = movie.transcript or []
                 # keyed by 0-based index into `scenes`, populated by workers
@@ -228,7 +239,6 @@ class PipelineService:
                         str(source_path), split_times, str(clips_dir)
                     ):
                         await queue.put((clip_index, clip_path))
-                    # signal every worker to stop
                     for _ in range(SBE_CONCURRENCY):
                         await queue.put(None)
 
@@ -270,13 +280,20 @@ class PipelineService:
                             scene_end=float(scene.end),
                         )
                         prepared[scene_idx] = (scene_video_key, scene_transcript, frame_rows)
-                        # release local disk space as soon as the clip is in S3
                         clip_path.unlink(missing_ok=True)
 
-                async with asyncio.TaskGroup() as tg:
-                    tg.create_task(_producer())
-                    for _ in range(SBE_CONCURRENCY):
-                        tg.create_task(_worker())
+                # Unwrap ExceptionGroup so Temporal sees the actual root cause
+                try:
+                    async with asyncio.TaskGroup() as tg:
+                        tg.create_task(_producer())
+                        for _ in range(SBE_CONCURRENCY):
+                            tg.create_task(_worker())
+                except BaseExceptionGroup as eg:
+                    first = eg.exceptions[0]
+                    logger.error("materialize_scenes TaskGroup failed", exc_info=eg)
+                    if isinstance(first, Exception):
+                        raise first from None
+                    raise
 
             missing = [i for i in range(len(scenes)) if i not in prepared]
             if missing:
