@@ -18,8 +18,9 @@ from src.config import (
     KEYFRAMES_PER_SCENE,
     PRESIGNED_URL_TTL_SEC,
     SBE_CONCURRENCY,
+    SBE_QUEUE_SIZE,
 )
-from src.db.models import SceneModel
+from src.db.models import MovieModel
 from src.domain import (
     Progress,
     SceneAnnotation,
@@ -138,6 +139,9 @@ class PipelineService:
         movie = await self._get_movie(task.movie_id)
         trace = task.langfuse_trace_id
 
+        if movie.duration is None:
+            raise LookupError("Movie duration not set — transcription must complete first")
+
         with self.langfuse.start_as_current_observation(
             as_type="span",
             name="pipeline.detect_scenes",
@@ -151,13 +155,15 @@ class PipelineService:
                 detected = await self.sbd.detect_scenes(str(video_path))
 
             scene_ids: list[UUID] = []
-            for scene in detected:
+            for i, scene in enumerate(detected):
+                # end = start of the next scene; for the last scene use movie duration
+                end = detected[i + 1].start_time if i + 1 < len(detected) else movie.duration
                 created = await self.scene_service.create(
                     movie_id=movie.id,
                     position=scene.scene_index,
                     start=scene.start_time,
-                    end=scene.end_time,
-                    duration=max(0.0, scene.end_time - scene.start_time),
+                    end=end,
+                    duration=max(0.0, end - scene.start_time),
                     status="queued",
                     transcript=SceneTranscript().model_dump(mode="json"),
                     video_s3_key=None,
@@ -181,10 +187,12 @@ class PipelineService:
         movie = await self._get_movie(task.movie_id)
         trace = task.langfuse_trace_id
 
+        selected = set(scene_ids)
         all_scenes = await self.scene_service.list_by_movie(movie.id)
-        selected = {scene_id for scene_id in scene_ids}
-        scenes = [scene for scene in all_scenes if scene.id in selected]
-        scenes.sort(key=lambda item: item.position)
+        scenes = sorted(
+            (s for s in all_scenes if s.id in selected),
+            key=lambda s: s.position,
+        )
         if not scenes:
             return
 
@@ -199,70 +207,98 @@ class PipelineService:
                 tmp_path = Path(tmp_dir)
                 source_path = tmp_path / "movie.mp4"
                 clips_dir = tmp_path / "clips"
-                clips_dir.mkdir(parents=True, exist_ok=True)
+                clips_dir.mkdir()
                 source_path.write_bytes(await self.storage.download(movie.video_s3_key))
 
-                split_times = [float(scene.start) for scene in scenes]
-                if not split_times:
-                    return
-                if split_times[0] != 0.0:
+                # Build stable split list — no dedup, 1:1 scene↔clip mapping guaranteed
+                split_times = [round(float(s.start), 6) for s in scenes]
+                has_preamble = split_times[0] != 0.0
+                if has_preamble:
                     split_times.insert(0, 0.0)
-                clip_paths = await self.sbe.extract_clips(str(source_path), split_times, str(clips_dir))
+                # clip_index - offset = index into `scenes`; preamble clip (index 0) is discarded
+                offset = 1 if has_preamble else 0
 
-                semaphore = asyncio.Semaphore(SBE_CONCURRENCY)
+                queue: asyncio.Queue[tuple[int, Path] | None] = asyncio.Queue(SBE_QUEUE_SIZE)
                 transcript_source = movie.transcript or []
+                # keyed by 0-based index into `scenes`, populated by workers
+                prepared: dict[int, tuple[str, SceneTranscript, list[tuple[int, float, float, str]]]] = {}
 
-                async def _prepare_scene(
-                    scene: SceneModel, clip_index: int
-                ) -> tuple[SceneModel, str, SceneTranscript, list[tuple[int, float, float, str]]]:
-                    async with semaphore:
-                        clip_path = clip_paths.get(clip_index)
-                        if clip_path is None:
-                            raise RuntimeError(f"Missing clip for scene index {clip_index}")
+                async def _producer() -> None:
+                    async for clip_index, clip_path in self.sbe.stream_clips(
+                        str(source_path), split_times, str(clips_dir)
+                    ):
+                        await queue.put((clip_index, clip_path))
+                    # signal every worker to stop
+                    for _ in range(SBE_CONCURRENCY):
+                        await queue.put(None)
 
+                async def _worker() -> None:
+                    while True:
+                        item = await queue.get()
+                        if item is None:
+                            break
+                        clip_index, clip_path = item
+
+                        scene_idx = clip_index - offset
+                        if scene_idx < 0:
+                            # preamble clip that precedes the first scene — discard
+                            clip_path.unlink(missing_ok=True)
+                            continue
+
+                        scene = scenes[scene_idx]
                         scene_prefix = f"movies/{movie.id}/scenes/{scene.id}"
                         await self.storage.delete_prefix(f"{scene_prefix}/")
                         scene_video_key = f"{scene_prefix}/video.mp4"
-                        await self.storage.upload_file(scene_video_key, clip_path, "video/mp4")
+                        await self.storage.upload_file(scene_video_key, str(clip_path), "video/mp4")
 
                         keyframes = await self.sbe.extract_keyframes(
-                            clip_path,
+                            str(clip_path),
                             max_keyframes=KEYFRAMES_PER_SCENE,
                             min_gap_sec=KEYFRAMES_MIN_GAP_SEC,
                             min_score_percentile=KEYFRAMES_MIN_SCORE_PERCENTILE,
                         )
 
                         frame_rows: list[tuple[int, float, float, str]] = []
-                        for position, keyframe in enumerate(keyframes):
+                        for position, kf in enumerate(keyframes):
                             frame_key = f"{scene_prefix}/frames/{position:06d}.jpg"
-                            await self.storage.upload(frame_key, keyframe.image_data, "image/jpeg")
-                            frame_rows.append((position, keyframe.timestamp, keyframe.score, frame_key))
+                            await self.storage.upload(frame_key, kf.image_data, "image/jpeg")
+                            frame_rows.append((position, kf.timestamp, kf.score, frame_key))
 
                         scene_transcript = self._slice_transcript(
                             transcript_source,
                             scene_start=float(scene.start),
                             scene_end=float(scene.end),
                         )
-                        return scene, scene_video_key, scene_transcript, frame_rows
+                        prepared[scene_idx] = (scene_video_key, scene_transcript, frame_rows)
+                        # release local disk space as soon as the clip is in S3
+                        clip_path.unlink(missing_ok=True)
 
-                # SQLAlchemy AsyncSession is not safe for concurrent DB operations.
-                prepared = await asyncio.gather(*(_prepare_scene(scene, index) for index, scene in enumerate(scenes)))
-                for scene, scene_video_key, scene_transcript, frame_rows in prepared:
-                    await self.frame_service.delete_by_scene(scene.id)
-                    for position, timestamp, score, frame_key in frame_rows:
-                        await self.frame_service.create(
-                            movie_id=movie.id,
-                            scene_id=scene.id,
-                            position=position,
-                            timestamp=timestamp,
-                            score=score,
-                            image_s3_key=frame_key,
-                        )
+                async with asyncio.TaskGroup() as tg:
+                    tg.create_task(_producer())
+                    for _ in range(SBE_CONCURRENCY):
+                        tg.create_task(_worker())
 
-                    scene.video_s3_key = scene_video_key
-                    scene.transcript = scene_transcript.model_dump(mode="json")
-                    await self.task_service.increment_progress(task_id, "scenes_extracted")
-                    await self.session.flush()
+            missing = [i for i in range(len(scenes)) if i not in prepared]
+            if missing:
+                raise RuntimeError(f"Scenes not processed after extraction: indices {missing}")
+
+            # SQLAlchemy AsyncSession requires strictly sequential DB writes
+            for scene_idx, scene in enumerate(scenes):
+                video_key, scene_transcript, frame_rows = prepared[scene_idx]
+                await self.frame_service.delete_by_scene(scene.id)
+                for position, timestamp, score, frame_key in frame_rows:
+                    await self.frame_service.create(
+                        movie_id=movie.id,
+                        scene_id=scene.id,
+                        position=position,
+                        timestamp=timestamp,
+                        score=score,
+                        image_s3_key=frame_key,
+                    )
+                scene.video_s3_key = video_key
+                scene.transcript = scene_transcript.model_dump(mode="json")
+                await self.task_service.increment_progress(task_id, "scenes_extracted")
+                await self.session.flush()
 
     async def annotate_scene(self, task_id: UUID, scene_id: UUID) -> None:
         task = await self._get_task(task_id)
@@ -393,14 +429,14 @@ class PipelineService:
         return scene
 
     @staticmethod
-    def _movie_info(movie: object) -> dict[str, object]:
+    def _movie_info(movie: MovieModel) -> dict[str, object]:
         return {
-            "title": getattr(movie, "title", None),
-            "year": getattr(movie, "year", None),
-            "slogan": getattr(movie, "slogan", None),
-            "description": getattr(movie, "description", None),
-            "short_description": getattr(movie, "short_description", None),
-            "genres": getattr(movie, "genres", None),
+            "title": movie.title,
+            "year": movie.year,
+            "slogan": movie.slogan,
+            "description": movie.description,
+            "short_description": movie.short_description,
+            "genres": movie.genres,
         }
 
     @staticmethod

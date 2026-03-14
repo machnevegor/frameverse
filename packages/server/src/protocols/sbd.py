@@ -6,11 +6,10 @@ from typing import Protocol, runtime_checkable
 
 @dataclass(slots=True)
 class DetectedScene:
-    """Detected scene interval in seconds."""
+    """Detected scene start point in seconds; end is derived from the next scene's start."""
 
     scene_index: int
     start_time: float
-    end_time: float
 
 
 @runtime_checkable
