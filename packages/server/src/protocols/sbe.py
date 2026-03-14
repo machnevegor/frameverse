@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -21,18 +20,12 @@ class KeyframeData:
 class SBEProtocol(Protocol):
     """Contract for SBE adapters."""
 
-    def stream_clips(
+    async def extract_clips(
         self,
         source: str,
         split_times: list[float],
         output_dir: str,
-    ) -> AsyncIterator[tuple[int, Path]]:
-        """Yield (clip_index, path) as ffmpeg produces completed segment files.
-
-        split_times must start with 0.0 and be strictly ascending.
-        Expected clip count equals len(split_times).
-        """
-        ...
+    ) -> list[Path]: ...
 
     async def extract_keyframes(
         self,

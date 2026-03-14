@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
 from pathlib import Path
 
 import cv2
 import numpy as np
 from scenedetect import ContentDetector, detect
 
-from src.config import SBD_THRESHOLD, SBE_POLL_INTERVAL_SEC
+from src.config import SBD_THRESHOLD
 from src.protocols.sbd import DetectedScene, SBDProtocol
 from src.protocols.sbe import KeyframeData, SBEProtocol
 
@@ -28,23 +27,32 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
             for idx, (start_tc, _) in enumerate(detected)
         ]
 
-    async def stream_clips(
+    async def extract_clips(
         self,
         source: str,
         split_times: list[float],
         output_dir: str,
-    ) -> AsyncIterator[tuple[int, Path]]:
-        """Async generator: yield (clip_index, path) as ffmpeg finishes each segment.
+    ) -> list[Path]:
+        """Extract scene clips in batch and return them in scene order.
 
-        Caller must ensure split_times[0] == 0.0 and list is strictly ascending.
+        Caller must ensure split_times is strictly ascending.
         Raises RuntimeError if ffmpeg exits with non-zero code or clip count mismatches.
         """
+        if not split_times:
+            return []
+        if split_times[0] < 0:
+            raise RuntimeError("split_times must be non-negative")
+        if any(current <= previous for previous, current in zip(split_times, split_times[1:], strict=False)):
+            raise RuntimeError("split_times must be strictly ascending")
+
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         expected = len(split_times)
+        batch_start = split_times[0]
 
         if len(split_times) == 1:
-            # Single segment — straight copy, no -f segment needed
+            # Single segment still needs re-encode so clips starting mid-movie
+            # begin with a decodable intra frame.
             cmd = [
                 "ffmpeg",
                 "-hide_banner",
@@ -52,19 +60,34 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
                 "-loglevel",
                 "error",
                 "-y",
+                "-ss",
+                f"{batch_start:.6f}",
                 "-i",
                 source,
                 "-map",
-                "0",
-                "-c",
-                "copy",
+                "0:v:0",
+                "-map",
+                "0:a?",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "21",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-movflags",
+                "+faststart",
                 str(output_path / "part_000000.mp4"),
             ]
         else:
-            segment_times = ",".join(f"{t:.9f}" for t in split_times[1:])
+            relative_times = [split_time - batch_start for split_time in split_times[1:]]
+            segment_times = ",".join(f"{t:.9f}" for t in relative_times)
             # Force keyframes exactly at split boundaries to guarantee every produced
             # clip starts with a decodable intra frame.
-            force_keyframes = ",".join(f"{t:.9f}" for t in split_times[1:])
+            force_keyframes = ",".join(f"{t:.9f}" for t in relative_times)
             cmd = [
                 "ffmpeg",
                 "-hide_banner",
@@ -72,6 +95,8 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
                 "-loglevel",
                 "error",
                 "-y",
+                "-ss",
+                f"{batch_start:.6f}",
                 "-i",
                 source,
                 "-map",
@@ -106,48 +131,14 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        # communicate() is wrapped in a Task so we can poll for new files concurrently
-        ffmpeg_task = asyncio.create_task(proc.communicate())
-        seen: set[int] = set()
+        _, stderr_bytes = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(stderr_bytes.decode("utf-8", "replace").strip() or "ffmpeg segment failed")
 
-        def _extract_index(path: Path) -> int:
-            # part_000042.mp4 → 42
-            return int(path.stem.removeprefix("part_"))
-
-        try:
-            # Poll while ffmpeg is running; skip the last file — it may still be open
-            while not ffmpeg_task.done():
-                await asyncio.sleep(SBE_POLL_INTERVAL_SEC)
-                files = sorted(output_path.glob("part_*.mp4"))
-                for path in files[:-1]:
-                    idx = _extract_index(path)
-                    if idx not in seen:
-                        seen.add(idx)
-                        yield (idx, path)
-
-            # ffmpeg finished — yield all remaining files
-            _, stderr_bytes = await ffmpeg_task
-            if proc.returncode != 0:
-                raise RuntimeError(stderr_bytes.decode("utf-8", "replace").strip() or "ffmpeg segment failed")
-
-            for path in sorted(output_path.glob("part_*.mp4")):
-                idx = _extract_index(path)
-                if idx not in seen:
-                    seen.add(idx)
-                    yield (idx, path)
-
-            if len(seen) != expected:
-                raise RuntimeError(f"ffmpeg produced {len(seen)} clips, expected {expected}")
-
-        finally:
-            # Guard against generator being abandoned mid-flight (e.g. TaskGroup cancel)
-            if not ffmpeg_task.done():
-                proc.kill()
-                ffmpeg_task.cancel()
-                try:
-                    await ffmpeg_task
-                except (asyncio.CancelledError, Exception):
-                    pass
+        clips = sorted(output_path.glob("part_*.mp4"))
+        if len(clips) != expected:
+            raise RuntimeError(f"ffmpeg produced {len(clips)} clips, expected {expected}")
+        return clips
 
     async def extract_keyframes(
         self,

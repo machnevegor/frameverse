@@ -21,7 +21,6 @@ from src.config import (
     KEYFRAMES_PER_SCENE,
     PRESIGNED_URL_TTL_SEC,
     SBE_CONCURRENCY,
-    SBE_QUEUE_SIZE,
 )
 from src.db.models import MovieModel
 from src.domain import (
@@ -215,50 +214,24 @@ class PipelineService:
                 clips_dir.mkdir()
                 source_path.write_bytes(await self.storage.download(movie.video_s3_key))
 
-                # Build stable split list — no dedup, 1:1 scene↔clip mapping guaranteed
                 split_times = [round(float(s.start), 6) for s in scenes]
-                has_preamble = split_times[0] != 0.0
-                if has_preamble:
-                    split_times.insert(0, 0.0)
-                # clip_index - offset = index into `scenes`; preamble clip (index 0) is discarded
-                offset = 1 if has_preamble else 0
 
                 logger.info(
                     "materialize_scenes started",
                     scenes=len(scenes),
                     split_times=len(split_times),
-                    offset=offset,
-                    preamble=has_preamble,
                 )
 
-                queue: asyncio.Queue[tuple[int, Path] | None] = asyncio.Queue(SBE_QUEUE_SIZE)
                 transcript_source = movie.transcript or []
-                # keyed by 0-based index into `scenes`, populated by workers
                 prepared: dict[int, tuple[str, SceneTranscript, list[tuple[int, float, float, str]]]] = {}
+                clip_paths = await self.sbe.extract_clips(str(source_path), split_times, str(clips_dir))
 
-                async def _producer() -> None:
-                    async for clip_index, clip_path in self.sbe.stream_clips(
-                        str(source_path), split_times, str(clips_dir)
-                    ):
-                        await queue.put((clip_index, clip_path))
-                    for _ in range(SBE_CONCURRENCY):
-                        await queue.put(None)
+                semaphore = asyncio.Semaphore(SBE_CONCURRENCY)
 
-                async def _worker() -> None:
-                    while True:
-                        item = await queue.get()
-                        if item is None:
-                            break
-                        clip_index, clip_path = item
-
-                        scene_idx = clip_index - offset
-                        if scene_idx < 0:
-                            # preamble clip that precedes the first scene — discard
-                            clip_path.unlink(missing_ok=True)
-                            continue
-
-                        scene = scenes[scene_idx]
-                        scene_prefix = f"movies/{movie.id}/scenes/{scene.id}"
+                async def _process_clip(scene_idx: int, clip_path: Path) -> None:
+                    scene = scenes[scene_idx]
+                    scene_prefix = f"movies/{movie.id}/scenes/{scene.id}"
+                    try:
                         await self.storage.delete_prefix(f"{scene_prefix}/")
                         scene_video_key = f"{scene_prefix}/video.mp4"
                         await self.storage.upload_file(scene_video_key, str(clip_path), "video/mp4")
@@ -282,14 +255,18 @@ class PipelineService:
                             scene_end=float(scene.end),
                         )
                         prepared[scene_idx] = (scene_video_key, scene_transcript, frame_rows)
+                    finally:
                         clip_path.unlink(missing_ok=True)
+
+                async def _worker(scene_idx: int, clip_path: Path) -> None:
+                    async with semaphore:
+                        await _process_clip(scene_idx, clip_path)
 
                 # Unwrap ExceptionGroup so Temporal sees the actual root cause
                 try:
                     async with asyncio.TaskGroup() as tg:
-                        tg.create_task(_producer())
-                        for _ in range(SBE_CONCURRENCY):
-                            tg.create_task(_worker())
+                        for scene_idx, clip_path in enumerate(clip_paths):
+                            tg.create_task(_worker(scene_idx, clip_path))
                 except BaseExceptionGroup as eg:
                     first = eg.exceptions[0]
                     logger.error("materialize_scenes TaskGroup failed", exc_info=eg)
