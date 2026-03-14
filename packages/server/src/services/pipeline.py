@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 from uuid import UUID
 
+import openai
 import structlog
 from langfuse import get_client
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -347,14 +348,19 @@ class PipelineService:
             metadata={"task_id": str(task_id), "movie_id": str(movie.id), "scene_id": str(scene.id), "stage": "ann"},
             input={"keyframes_count": len(keyframe_urls), "previous_count": len(previous_annotations)},
         ):
-            annotation_text = await self.ann.annotate(
-                movie_info=self._movie_info(movie),
-                keyframe_urls=keyframe_urls,
-                scene_transcript=scene_transcript,
-                previous_annotations=previous_annotations,
-                trace_id=trace,
-                metadata={"task_id": str(task_id), "scene_id": str(scene.id)},
-            )
+            try:
+                annotation_text = await self.ann.annotate(
+                    movie_info=self._movie_info(movie),
+                    keyframe_urls=keyframe_urls,
+                    scene_transcript=scene_transcript,
+                    previous_annotations=previous_annotations,
+                    trace_id=trace,
+                    metadata={"task_id": str(task_id), "scene_id": str(scene.id)},
+                )
+            except openai.BadRequestError as exc:
+                # content filter or moderation — skip annotation, do not fail the activity
+                logger.warning("annotation skipped: content filter", scene_id=str(scene.id), error=str(exc))
+                annotation_text = ""
 
         scene.annotation = SceneAnnotation(text=annotation_text).model_dump(mode="json")
         await self.task_service.increment_progress(task_id, "scenes_annotated")
@@ -394,15 +400,23 @@ class PipelineService:
                 trace_id=trace,
                 metadata={"task_id": str(task_id), "scene_id": str(scene.id), "kind": "transcript"},
             )
-            image_vectors_task = self.emb.embed_images(
-                frame_urls,
-                trace_id=trace,
-                metadata={"task_id": str(task_id), "scene_id": str(scene.id), "kind": "frames"},
-            )
+
+            async def _safe_embed_images() -> list[list[float]]:
+                try:
+                    return await self.emb.embed_images(
+                        frame_urls,
+                        trace_id=trace,
+                        metadata={"task_id": str(task_id), "scene_id": str(scene.id), "kind": "frames"},
+                    )
+                except Exception as exc:
+                    # content filter or provider error — skip image embeddings, do not fail the activity
+                    logger.warning("image embedding skipped", scene_id=str(scene.id), error=str(exc))
+                    return []
+
             annotation_vectors, transcript_vectors, image_vectors = await asyncio.gather(
                 annotation_vectors_task,
                 transcript_vectors_task,
-                image_vectors_task,
+                _safe_embed_images(),
             )
 
         scene.annotation_embedding = annotation_vectors[0] if annotation_vectors else None

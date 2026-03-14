@@ -113,10 +113,12 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
                     json=payload,
                 )
                 response.raise_for_status()
-        data = response.json()
-        # sort by index to guarantee order matches input
-        items = sorted(data["data"], key=lambda x: x["index"])
-        return [item["embedding"] for item in items]
+            body = response.json()
+            if "data" not in body:
+                raise RuntimeError(f"OpenRouter embeddings returned no data: {body}")
+            # sort by index to guarantee order matches input
+            items = sorted(body["data"], key=lambda x: x["index"])
+            return [item["embedding"] for item in items]
 
     @staticmethod
     def _render_annotation_payload(
