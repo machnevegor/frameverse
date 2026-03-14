@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import delete, select, text, update
@@ -16,6 +17,15 @@ from src.config import (
 )
 from src.db.models import SceneModel
 from src.domain import NonTerminalSceneStatus
+
+
+@dataclass(slots=True)
+class SceneSearchMatch:
+    scene: SceneModel
+    distance: float
+    transcript_distance: float | None
+    annotation_distance: float | None
+    image_distance: float | None
 
 
 class SceneService:
@@ -80,11 +90,12 @@ class SceneService:
 
     async def search(
         self,
-        query_vector: list[float],
         *,
+        text_query_vector: list[float],
+        image_query_vector: list[float],
         movie_id: UUID | None = None,
         limit: int = 10,
-    ) -> list[tuple[SceneModel, float, float | None, float | None, float | None]]:
+    ) -> list[SceneSearchMatch]:
         if (
             SEARCH_SCENES_ANNOTATION_WEIGHT <= 0
             and SEARCH_SCENES_TRANSCRIPT_WEIGHT <= 0
@@ -92,27 +103,43 @@ class SceneService:
         ):
             raise ValueError("At least one SEARCH_SCENES_* weight must be greater than zero")
 
-        vec_str = f"[{','.join(str(v) for v in query_vector)}]"
-        movie_filter = "AND s.movie_id = :movie_id" if movie_id is not None else ""
+        text_vec = self._vector_literal(text_query_vector)
+        image_vec = self._vector_literal(image_query_vector)
+        movie_filter = "WHERE movie_id = :movie_id" if movie_id is not None else ""
 
         raw = text(
             f"""
-            WITH frame_scores AS (
-                SELECT scene_id, MIN(image_embedding <=> CAST(:img_vec AS halfvec({EMB_IMG_DIMENSIONS}))) AS best_img_dist
-                FROM frames
-                WHERE image_embedding IS NOT NULL
-                GROUP BY scene_id
+            WITH scoped_scenes AS (
+                SELECT id
+                FROM scenes
+                {movie_filter}
+            ),
+            text_scores AS (
+                SELECT
+                    s.id,
+                    s.annotation_embedding <=> CAST(:text_vec AS vector({EMB_TXT_DIMENSIONS})) AS annotation_distance,
+                    s.transcript_embedding <=> CAST(:text_vec AS vector({EMB_TXT_DIMENSIONS})) AS transcript_distance
+                FROM scenes s
+                JOIN scoped_scenes ss ON ss.id = s.id
+            ),
+            image_scores AS (
+                SELECT
+                    f.scene_id AS id,
+                    MIN(f.image_embedding <=> CAST(:image_vec AS halfvec({EMB_IMG_DIMENSIONS}))) AS image_distance
+                FROM frames f
+                JOIN scoped_scenes ss ON ss.id = f.scene_id
+                WHERE f.image_embedding IS NOT NULL
+                GROUP BY f.scene_id
             ),
             scored AS (
                 SELECT
-                    s.id,
-                    s.annotation_embedding <=> CAST(:txt_vec AS vector({EMB_TXT_DIMENSIONS})) AS annotation_distance,
-                    s.transcript_embedding <=> CAST(:txt_vec AS vector({EMB_TXT_DIMENSIONS})) AS transcript_distance,
-                    fs.best_img_dist AS image_distance
-                FROM scenes s
-                LEFT JOIN frame_scores fs ON fs.scene_id = s.id
-                WHERE true
-                {movie_filter}
+                    ss.id,
+                    ts.annotation_distance,
+                    ts.transcript_distance,
+                    ims.image_distance
+                FROM scoped_scenes ss
+                LEFT JOIN text_scores ts ON ts.id = ss.id
+                LEFT JOIN image_scores ims ON ims.id = ss.id
             ),
             weighted AS (
                 SELECT
@@ -149,9 +176,10 @@ class SceneService:
             LIMIT :limit
             """,
         )
+
         params: dict[str, str | int | float] = {
-            "txt_vec": vec_str,
-            "img_vec": vec_str,
+            "text_vec": text_vec,
+            "image_vec": image_vec,
             "limit": limit,
             "annotation_weight": SEARCH_SCENES_ANNOTATION_WEIGHT,
             "transcript_weight": SEARCH_SCENES_TRANSCRIPT_WEIGHT,
@@ -165,25 +193,20 @@ class SceneService:
         if not rows:
             return []
 
-        scene_metrics = {
-            str(row[0]): {
-                "annotation_distance": float(row[1]) if row[1] is not None else None,
-                "transcript_distance": float(row[2]) if row[2] is not None else None,
-                "image_distance": float(row[3]) if row[3] is not None else None,
-                "distance": float(row[4]),
-            }
-            for row in rows
-        }
         ordered_ids = [row[0] for row in rows]
         scenes_result = await self.session.execute(select(SceneModel).where(SceneModel.id.in_(ordered_ids)))
         scenes_by_id = {str(scene.id): scene for scene in scenes_result.scalars()}
         return [
-            (
-                scenes_by_id[str(scene_id)],
-                scene_metrics[str(scene_id)]["distance"],
-                scene_metrics[str(scene_id)]["transcript_distance"],
-                scene_metrics[str(scene_id)]["annotation_distance"],
-                scene_metrics[str(scene_id)]["image_distance"],
+            SceneSearchMatch(
+                scene=scenes_by_id[str(row[0])],
+                annotation_distance=float(row[1]) if row[1] is not None else None,
+                transcript_distance=float(row[2]) if row[2] is not None else None,
+                image_distance=float(row[3]) if row[3] is not None else None,
+                distance=float(row[4]),
             )
-            for scene_id in ordered_ids
+            for row in rows
         ]
+
+    @staticmethod
+    def _vector_literal(values: list[float]) -> str:
+        return f"[{','.join(str(value) for value in values)}]"

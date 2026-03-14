@@ -22,3 +22,11 @@ class EMBProtocol(Protocol):
         trace_id: str | None = None,
         metadata: dict[str, str] | None = None,
     ) -> list[list[float]]: ...
+
+    async def embed_visual_queries(
+        self,
+        texts: list[str],
+        *,
+        trace_id: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> list[list[float]]: ...

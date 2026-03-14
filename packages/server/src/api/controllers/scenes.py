@@ -46,21 +46,26 @@ async def search_scenes(session: AsyncSession, data: SearchScenesInput) -> Searc
     try:
         emb = get_emb()
         scene_service = SceneService(session)
-        vectors = await emb.embed_texts([data.query])
-        query_vector = vectors[0]
-        results = await scene_service.search(query_vector, movie_id=data.movie_id, limit=data.limit)
+        text_query_vector = (await emb.embed_texts([data.query]))[0]
+        image_query_vector = (await emb.embed_visual_queries([data.query]))[0]
+        results = await scene_service.search(
+            text_query_vector=text_query_vector,
+            image_query_vector=image_query_vector,
+            movie_id=data.movie_id,
+            limit=data.limit,
+        )
 
         hits = []
-        for scene_model, distance, transcript_distance, annotation_distance, image_distance in results:
-            scene = to_scene(scene_model)
-            score = _distance_to_score(distance)
+        for match in results:
+            scene = to_scene(match.scene)
+            score = _distance_to_score(match.distance)
             if score is None:
                 continue
             payload = scene.model_dump(mode="json")
             payload["score"] = score
-            payload["transcript_score"] = _distance_to_score(transcript_distance)
-            payload["annotation_score"] = _distance_to_score(annotation_distance)
-            payload["image_score"] = _distance_to_score(image_distance)
+            payload["transcript_score"] = _distance_to_score(match.transcript_distance)
+            payload["annotation_score"] = _distance_to_score(match.annotation_distance)
+            payload["image_score"] = _distance_to_score(match.image_distance)
             hits.append(SceneSearchHit.model_validate(payload))
         return SearchScenesResult(data=hits)
     except Exception as exc:

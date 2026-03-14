@@ -98,6 +98,7 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
         payload = {
             "model": settings.emb_img_model,
             "encoding_format": "float",
+            "input_type": "passage",
             "input": [{"content": [{"type": "image_url", "image_url": {"url": url}}]} for url in image_urls],
         }
         logger.info("embed_images request", model=settings.emb_img_model, image_urls=image_urls)
@@ -120,6 +121,45 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
             if "data" not in body:
                 raise RuntimeError(f"OpenRouter embeddings returned no data: {body}")
             # sort by index to guarantee order matches input
+            items = sorted(body["data"], key=lambda x: x["index"])
+            return [item["embedding"] for item in items]
+
+    async def embed_visual_queries(
+        self,
+        texts: list[str],
+        *,
+        trace_id: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> list[list[float]]:
+        if not texts:
+            return []
+
+        payload = {
+            "model": settings.emb_img_model,
+            "encoding_format": "float",
+            "input_type": "query",
+            "modality": ["text"],
+            "input": texts,
+        }
+        logger.info("embed_visual_queries request", model=settings.emb_img_model, texts_count=len(texts))
+        with self._langfuse.start_as_current_observation(
+            as_type="generation",
+            name="scene-visual-query-embedding",
+            trace_context={"trace_id": trace_id} if trace_id else None,
+            metadata=metadata or {},
+            model=settings.emb_img_model,
+            input={"queries_count": len(texts)},
+        ):
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{OPENROUTER_BASE_URL}/embeddings",
+                    headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+                    json=payload,
+                )
+                response.raise_for_status()
+            body = response.json()
+            if "data" not in body:
+                raise RuntimeError(f"OpenRouter embeddings returned no data: {body}")
             items = sorted(body["data"], key=lambda x: x["index"])
             return [item["embedding"] for item in items]
 
