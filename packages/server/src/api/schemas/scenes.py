@@ -32,6 +32,18 @@ class SceneSearchHit(Scene):
     """This object represents a scene search hit with similarity score."""
 
     score: float = Field(..., description="Cosine similarity score in range [0, 1].")
+    transcript_score: float | None = Field(
+        None,
+        description="_Optional_. Transcript similarity score in range [0, 1].",
+    )
+    annotation_score: float | None = Field(
+        None,
+        description="_Optional_. Annotation similarity score in range [0, 1].",
+    )
+    image_score: float | None = Field(
+        None,
+        description="_Optional_. Visual similarity score in range [0, 1].",
+    )
 
 
 class SearchScenesResult(BaseModel):

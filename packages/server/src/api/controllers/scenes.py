@@ -24,6 +24,12 @@ from src.services.frame import FrameService
 from src.services.scene import SceneService
 
 
+def _distance_to_score(distance: float | None) -> float | None:
+    if distance is None:
+        return None
+    return max(0.0, min(1.0, 1.0 - (distance / 2.0)))
+
+
 @post(
     f"{settings.base_path}/search/scenes",
     tags=["Search"],
@@ -41,11 +47,16 @@ async def search_scenes(session: AsyncSession, data: SearchScenesInput) -> Searc
     results = await scene_service.search(query_vector, movie_id=data.movie_id, limit=data.limit)
 
     hits = []
-    for scene_model, distance in results:
+    for scene_model, distance, transcript_distance, annotation_distance, image_distance in results:
         scene = to_scene(scene_model)
-        score = max(0.0, min(1.0, 1.0 - (distance / 2.0)))
+        score = _distance_to_score(distance)
+        if score is None:
+            continue
         payload = scene.model_dump(mode="json")
         payload["score"] = score
+        payload["transcript_score"] = _distance_to_score(transcript_distance)
+        payload["annotation_score"] = _distance_to_score(annotation_distance)
+        payload["image_score"] = _distance_to_score(image_distance)
         hits.append(SceneSearchHit.model_validate(payload))
     return SearchScenesResult(data=hits)
 

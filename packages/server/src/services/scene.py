@@ -7,6 +7,11 @@ from uuid import UUID
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import (
+    SEARCH_SCENES_ANNOTATION_WEIGHT,
+    SEARCH_SCENES_IMAGE_WEIGHT,
+    SEARCH_SCENES_TRANSCRIPT_WEIGHT,
+)
 from src.db.models import SceneModel
 from src.domain import NonTerminalSceneStatus
 
@@ -77,7 +82,14 @@ class SceneService:
         *,
         movie_id: UUID | None = None,
         limit: int = 10,
-    ) -> list[tuple[SceneModel, float]]:
+    ) -> list[tuple[SceneModel, float, float | None, float | None, float | None]]:
+        if (
+            SEARCH_SCENES_ANNOTATION_WEIGHT <= 0
+            and SEARCH_SCENES_TRANSCRIPT_WEIGHT <= 0
+            and SEARCH_SCENES_IMAGE_WEIGHT <= 0
+        ):
+            raise ValueError("At least one SEARCH_SCENES_* weight must be greater than zero")
+
         vec_str = f"[{','.join(str(v) for v in query_vector)}]"
         movie_filter = "AND s.movie_id = :movie_id" if movie_id is not None else ""
 
@@ -88,30 +100,50 @@ class SceneService:
                 FROM frames
                 WHERE image_embedding IS NOT NULL
                 GROUP BY scene_id
+            ),
+            scored AS (
+                SELECT
+                    s.id,
+                    s.annotation_embedding <=> CAST(:vec AS vector) AS annotation_distance,
+                    s.transcript_embedding <=> CAST(:vec AS vector) AS transcript_distance,
+                    fs.best_img_dist AS image_distance
+                FROM scenes s
+                LEFT JOIN frame_scores fs ON fs.scene_id = s.id
+                WHERE true
+                {movie_filter}
             )
-            SELECT s.id, (
-                COALESCE(s.annotation_embedding <=> CAST(:vec AS vector), 0) +
-                COALESCE(s.transcript_embedding <=> CAST(:vec AS vector), 0) +
-                COALESCE(fs.best_img_dist, 0)
+            SELECT
+                id,
+                annotation_distance,
+                transcript_distance,
+                image_distance,
+                (
+                COALESCE(annotation_distance * :annotation_weight, 0) +
+                COALESCE(transcript_distance * :transcript_weight, 0) +
+                COALESCE(image_distance * :image_weight, 0)
             ) / NULLIF(
-                (s.annotation_embedding IS NOT NULL)::int +
-                (s.transcript_embedding IS NOT NULL)::int +
-                (fs.best_img_dist IS NOT NULL)::int,
+                ((annotation_distance IS NOT NULL)::int * :annotation_weight) +
+                ((transcript_distance IS NOT NULL)::int * :transcript_weight) +
+                ((image_distance IS NOT NULL)::int * :image_weight),
                 0
             ) AS distance
-            FROM scenes s
-            LEFT JOIN frame_scores fs ON fs.scene_id = s.id
+            FROM scored
             WHERE (
-                s.annotation_embedding IS NOT NULL
-                OR s.transcript_embedding IS NOT NULL
-                OR fs.best_img_dist IS NOT NULL
+                annotation_distance IS NOT NULL
+                OR transcript_distance IS NOT NULL
+                OR image_distance IS NOT NULL
             )
-            {movie_filter}
             ORDER BY distance
             LIMIT :limit
             """,
         )
-        params: dict[str, str | int] = {"vec": vec_str, "limit": limit}
+        params: dict[str, str | int | float] = {
+            "vec": vec_str,
+            "limit": limit,
+            "annotation_weight": SEARCH_SCENES_ANNOTATION_WEIGHT,
+            "transcript_weight": SEARCH_SCENES_TRANSCRIPT_WEIGHT,
+            "image_weight": SEARCH_SCENES_IMAGE_WEIGHT,
+        }
         if movie_id is not None:
             params["movie_id"] = str(movie_id)
 
@@ -120,8 +152,25 @@ class SceneService:
         if not rows:
             return []
 
-        scene_distances = {str(row[0]): float(row[1]) for row in rows}
+        scene_metrics = {
+            str(row[0]): {
+                "annotation_distance": float(row[1]) if row[1] is not None else None,
+                "transcript_distance": float(row[2]) if row[2] is not None else None,
+                "image_distance": float(row[3]) if row[3] is not None else None,
+                "distance": float(row[4]),
+            }
+            for row in rows
+        }
         ordered_ids = [row[0] for row in rows]
         scenes_result = await self.session.execute(select(SceneModel).where(SceneModel.id.in_(ordered_ids)))
         scenes_by_id = {str(scene.id): scene for scene in scenes_result.scalars()}
-        return [(scenes_by_id[str(scene_id)], scene_distances[str(scene_id)]) for scene_id in ordered_ids]
+        return [
+            (
+                scenes_by_id[str(scene_id)],
+                scene_metrics[str(scene_id)]["distance"],
+                scene_metrics[str(scene_id)]["transcript_distance"],
+                scene_metrics[str(scene_id)]["annotation_distance"],
+                scene_metrics[str(scene_id)]["image_distance"],
+            )
+            for scene_id in ordered_ids
+        ]
