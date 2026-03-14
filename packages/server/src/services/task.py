@@ -108,19 +108,21 @@ class TaskService:
     async def increment_progress(self, task_id: UUID, field: str) -> None:
         if field not in _PROGRESS_FIELDS:
             raise ValueError(f"Unsupported progress field: {field}")
+
         await self.session.execute(
-            text(
-                f"""
+            text(f"""
                 UPDATE tasks
                 SET progress = jsonb_set(
-                    COALESCE(progress, '{{"scenes_detected":0,"scenes_extracted":0,"scenes_annotated":0,"scenes_embedded":0}}'::jsonb),
+                    COALESCE(progress, :default_progress::jsonb),
                     '{{{field}}}',
                     to_jsonb(COALESCE((progress->>'{field}')::int, 0) + 1),
                     true
                 )
                 WHERE id = :task_id
-                """,
-            ),
-            {"task_id": str(task_id)},
+            """),
+            {
+                "default_progress": '{"scenes_detected":0,"scenes_extracted":0,"scenes_annotated":0,"scenes_embedded":0}',
+                "task_id": str(task_id),
+            },
         )
         await self.session.flush()
