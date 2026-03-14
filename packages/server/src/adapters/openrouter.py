@@ -93,7 +93,7 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
         response = await self._client.embeddings.create(
             model=settings.emb_model,
             dimensions=EMB_DIMENSIONS,
-            input=[{"type": "image_url", "image_url": {"url": url}} for url in image_urls],
+            input=[{"content": [{"type": "image_url", "image_url": {"url": url}}]} for url in image_urls],
             trace_id=trace_id,
             metadata=metadata or {},
             name="scene-image-embedding",
