@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
+import yaml
+from langfuse import get_client
 from langfuse.openai import AsyncOpenAI as LangfuseAsyncOpenAI
 
-from src.config import EMB_DIMENSIONS, OPENROUTER_BASE_URL, settings
+from src.config import ANN_PROMPT_NAME, EMB_DIMENSIONS, OPENROUTER_BASE_URL, settings
 from src.domain import SceneTranscript
 from src.protocols.ann import ANNProtocol
 from src.protocols.emb import EMBProtocol
@@ -21,6 +22,7 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
             api_key=settings.openrouter_api_key,
             base_url=OPENROUTER_BASE_URL,
         )
+        self._langfuse = get_client()
 
     async def annotate(
         self,
@@ -32,10 +34,18 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
         trace_id: str | None = None,
         metadata: dict[str, str] | None = None,
     ) -> str:
-        text_block = self._render_annotation_payload(movie_info, scene_transcript, previous_annotations)
-        content: list[dict[str, Any]] = [{"type": "text", "text": text_block}]
-        for keyframe_url in keyframe_urls:
-            content.append({"type": "image_url", "image_url": {"url": keyframe_url}})
+        prompt = self._langfuse.get_prompt(ANN_PROMPT_NAME)
+        system_prompt = prompt.compile()
+        if not isinstance(system_prompt, str) or not system_prompt.strip():
+            raise ValueError(f"Langfuse prompt '{ANN_PROMPT_NAME}' must compile to non-empty text")
+
+        user_content: list[dict[str, Any]] = [
+            {
+                "type": "text",
+                "text": self._render_annotation_payload(movie_info, scene_transcript, previous_annotations),
+            },
+        ]
+        user_content.extend({"type": "image_url", "image_url": {"url": url}} for url in keyframe_urls)
 
         response = await self._client.chat.completions.create(
             model=settings.ann_model,
@@ -43,24 +53,13 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
             trace_id=trace_id,
             metadata=metadata or {},
             name="scene-annotation",
+            langfuse_prompt=prompt,
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a scene annotation model for movie retrieval. "
-                        "Generate a compact, factual and grounded scene summary in plain text. "
-                        "Do not infer identities from faces. "
-                        "Use only provided transcript/context and visible evidence."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": content,
-                },
+                {"role": "system", "content": system_prompt.strip()},
+                {"role": "user", "content": user_content},
             ],
         )
-        message = response.choices[0].message
-        output = message.content or ""
+        output = response.choices[0].message.content or ""
         return output.strip()
 
     async def embed_texts(
@@ -91,11 +90,10 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
     ) -> list[list[float]]:
         if not image_urls:
             return []
-        input_payload = [{"type": "image_url", "image_url": {"url": url}} for url in image_urls]
         response = await self._client.embeddings.create(
             model=settings.emb_model,
             dimensions=EMB_DIMENSIONS,
-            input=input_payload,
+            input=[{"type": "image_url", "image_url": {"url": url}} for url in image_urls],
             trace_id=trace_id,
             metadata=metadata or {},
             name="scene-image-embedding",
@@ -108,17 +106,18 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
         scene_transcript: SceneTranscript,
         previous_annotations: list[str],
     ) -> str:
-        movie_info_payload = {
-            key: value
-            for key, value in movie_info.items()
-            if value is not None and (not isinstance(value, str) or value.strip())
+        movie_block = {key: value for key, value in movie_info.items() if value is not None}
+
+        previous_block = {
+            f"{index} сцена до текущей": text
+            for index, text in enumerate(reversed(previous_annotations or []), start=1)
         }
-        transcript_payload = scene_transcript.model_dump(mode="json")
-        previous_payload = previous_annotations or []
-        return "\n\n".join(
-            [
-                "movie_info:\n" + json.dumps(movie_info_payload, ensure_ascii=False),
-                "scene_transcript:\n" + json.dumps(transcript_payload, ensure_ascii=False),
-                "previous_scene_annotations:\n" + json.dumps(previous_payload, ensure_ascii=False),
-            ],
+
+        return (
+            "Информация о фильме\n"
+            f"{yaml.dump(movie_block, allow_unicode=True, default_flow_style=False, sort_keys=False)}\n"
+            "Транскрипт\n"
+            f"{yaml.dump(scene_transcript.model_dump(mode='json'), allow_unicode=True, default_flow_style=False, sort_keys=False)}\n"
+            "Предыдущие сцены\n"
+            f"{yaml.dump(previous_block, allow_unicode=True, default_flow_style=False, sort_keys=False)}"
         )
