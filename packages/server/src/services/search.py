@@ -26,6 +26,7 @@ from src.config import (
     SEARCH_MAX_MOVIE_GROUPS,
     SEARCH_MAX_SCENES_PER_GROUP,
     SEARCH_RERANK_PROMPT_NAME,
+    SEARCH_SCORE_THRESHOLD,
     settings,
 )
 from src.db.models import FrameModel, MovieModel, SceneModel
@@ -320,20 +321,32 @@ class SearchService:
                 image_distance=distances.get("image"),
             )
 
+    @staticmethod
+    def _max_similarity(c: CandidateScene) -> float:
+        """Best cosine similarity across all channels: score = 1 - dist/2."""
+        scores = [
+            max(0.0, min(1.0, 1.0 - d / 2.0))
+            for d in (c.transcript_distance, c.annotation_distance, c.image_distance)
+            if d is not None
+        ]
+        return max(scores) if scores else 0.0
+
     def _render_tool_result(self, new_numbers: list[int]) -> list[dict[str, Any]]:
         """Render YAML scene descriptions + labeled frames for multimodal tool result."""
         content: list[dict[str, Any]] = []
 
-        if not new_numbers:
-            content.append({"type": "text", "text": "Новых сцен не найдено. Попробуй другой запрос."})
+        # filter out weak candidates — at least one channel must meet SEARCH_SCORE_THRESHOLD
+        above = [n for n in new_numbers if self._max_similarity(self._candidates[n]) >= SEARCH_SCORE_THRESHOLD]
+
+        if not above:
+            content.append({"type": "text", "text": "Новых релевантных сцен не найдено. Попробуй другой запрос."})
             return content
 
         scenes_data: dict[str, Any] = {}
-        for num in new_numbers:
+        for num in above:
             c = self._candidates[num]
             movie_label = c.movie_title + (f" ({c.movie_year})" if c.movie_year else "")
             match_scores: dict[str, float] = {}
-            # distance to cosine similarity: score = 1 - dist/2, clamped to [0, 1]
             for label, dist in [
                 ("транскрипт", c.transcript_distance),
                 ("аннотация", c.annotation_distance),
@@ -349,10 +362,10 @@ class SearchService:
             }
 
         yaml_text = yaml.dump(scenes_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
-        content.append({"type": "text", "text": f"Найдено {len(new_numbers)} новых сцен:\n\n{yaml_text}"})
+        content.append({"type": "text", "text": f"Найдено {len(above)} новых сцен:\n\n{yaml_text}"})
 
         # labeled frames for vision inspection — only new scenes to avoid re-sending known images
-        for num in new_numbers:
+        for num in above:
             c = self._candidates[num]
             if c.frame_url:
                 movie_label = c.movie_title + (f" ({c.movie_year})" if c.movie_year else "")
