@@ -351,9 +351,12 @@ function GenreInput({
   );
 }
 
-// ---------------------------------------------------------------------------
-// File drop zone
-// ---------------------------------------------------------------------------
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "—";
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+}
 
 interface FileDropZoneProps {
   accept: string;
@@ -397,7 +400,7 @@ function FileDropZone({
         <div className="space-y-1">
           <p className="break-all font-medium text-sm">{file.name}</p>
           <p className="text-muted-foreground text-xs">
-            {(file.size / 1024 / 1024).toFixed(1)} МБ
+            {formatFileSize(file.size)}
           </p>
         </div>
       ) : (
