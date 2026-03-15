@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import signal
-from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import cv2
 import numpy as np
 from scenedetect import ContentDetector, detect
 
-from src.config import SBD_THRESHOLD, SBE_POLL_INTERVAL_SEC
+from src.config import SBD_THRESHOLD
 from src.protocols.sbd import DetectedScene, SBDProtocol
-from src.protocols.sbe import KeyframeData, SBEProtocol
+from src.protocols.sbe import ClipExtractionMode, KeyframeData, SBEProtocol
 
 
 class SceneDetectAdapter(SBDProtocol, SBEProtocol):
@@ -29,19 +27,110 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
             for idx, (start_tc, _) in enumerate(detected)
         ]
 
-    def stream_clips(
+    async def list_keyframe_times(self, source: str) -> list[float]:
+        proc = await asyncio.create_subprocess_exec(
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-skip_frame",
+            "nokey",
+            "-show_entries",
+            "frame=best_effort_timestamp_time",
+            "-of",
+            "csv=p=0",
+            source,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(stderr.decode("utf-8", "replace").strip() or "ffprobe keyframe scan failed")
+
+        values: list[float] = []
+        for line in stdout.decode("utf-8", "replace").splitlines():
+            value = line.strip().split(",")[0]
+            if not value:
+                continue
+            values.append(float(value))
+
+        if not values:
+            return []
+
+        unique_sorted = sorted({round(value, 6) for value in values})
+        return unique_sorted
+
+    async def extract_clip(
         self,
         source: str,
-        split_times: list[float],
-        output_dir: str,
-    ) -> AsyncGenerator[tuple[int, Path], None]:
-        """Stream scene clips as they are produced by ffmpeg.
+        *,
+        start_time: float,
+        end_time: float,
+        output_path: str,
+        mode: ClipExtractionMode,
+    ) -> Path:
+        if start_time < 0:
+            raise RuntimeError("start_time must be non-negative")
+        if end_time <= start_time:
+            raise RuntimeError("end_time must be greater than start_time")
 
-        Yields (scene_index, clip_path) pairs in order as each clip becomes
-        available. split_times must be strictly ascending scene start times.
-        Expected total yield count equals len(split_times).
-        """
-        return _stream_clips(source, split_times, output_dir)
+        output = Path(output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        duration = end_time - start_time
+
+        common = [
+            "ffmpeg",
+            "-hide_banner",
+            "-nostdin",
+            "-loglevel",
+            "error",
+            "-y",
+            "-ss",
+            f"{start_time:.6f}",
+            "-i",
+            source,
+            "-t",
+            f"{duration:.6f}",
+            "-map",
+            "0",
+        ]
+        if mode == "copy":
+            cmd = [
+                *common,
+                "-c",
+                "copy",
+                "-movflags",
+                "+faststart",
+                str(output),
+            ]
+        else:
+            cmd = [
+                *common,
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "23",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-movflags",
+                "+faststart",
+                str(output),
+            ]
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(stderr.decode("utf-8", "replace").strip() or "ffmpeg clip extraction failed")
+        return output
 
     async def extract_keyframes(
         self,
@@ -141,142 +230,3 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
             return results
         finally:
             capture.release()
-
-
-async def _stream_clips(
-    source: str,
-    split_times: list[float],
-    output_dir: str,
-) -> AsyncGenerator[tuple[int, Path], None]:
-    if not split_times:
-        return
-
-    if split_times[0] < 0:
-        raise RuntimeError("split_times must be non-negative")
-    if any(cur <= prev for prev, cur in zip(split_times, split_times[1:], strict=False)):
-        raise RuntimeError("split_times must be strictly ascending")
-
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-    expected = len(split_times)
-
-    # Re-encode so each segment starts with an I-frame (avoids black screen when
-    # cutting at non-keyframe positions). -c copy would produce broken first frames.
-    force_keyframes = ",".join(f"{t:.6f}" for t in split_times)
-    video_encode = [
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "23",
-        "-pix_fmt",
-        "yuv420p",
-        "-force_key_frames",
-        force_keyframes,
-    ]
-    audio_encode = ["-c:a", "aac"]
-
-    if len(split_times) == 1:
-        cmd = [
-            "ffmpeg",
-            "-hide_banner",
-            "-nostdin",
-            "-loglevel",
-            "error",
-            "-progress",
-            "pipe:1",
-            "-y",
-            "-i",
-            source,
-            "-map",
-            "0",
-            *video_encode,
-            *audio_encode,
-            str(output_path / "part_000000.mp4"),
-        ]
-    else:
-        segment_times = ",".join(f"{t:.6f}" for t in split_times[1:])
-        cmd = [
-            "ffmpeg",
-            "-hide_banner",
-            "-nostdin",
-            "-loglevel",
-            "error",
-            "-progress",
-            "pipe:1",
-            "-y",
-            "-i",
-            source,
-            "-map",
-            "0",
-            *video_encode,
-            *audio_encode,
-            "-f",
-            "segment",
-            "-reset_timestamps",
-            "1",
-            "-segment_times",
-            segment_times,
-            str(output_path / "part_%06d.mp4"),
-        ]
-
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stderr_task = asyncio.create_task(_read_all(proc.stderr))
-    ffmpeg_done = asyncio.Event()
-
-    async def _drain_stdout() -> None:
-        assert proc.stdout is not None
-        while True:
-            line = await proc.stdout.readline()
-            if not line:
-                break
-        code = await proc.wait()
-        stderr = await stderr_task
-        if code != 0:
-            raise RuntimeError(stderr.strip() or f"ffmpeg failed with code {code}")
-        ffmpeg_done.set()
-
-    drain_task = asyncio.create_task(_drain_stdout())
-
-    try:
-        yielded = 0
-        while yielded < expected:
-            # Propagate ffmpeg errors early without waiting for the next poll.
-            if drain_task.done() and not ffmpeg_done.is_set():
-                await drain_task  # re-raise the stored exception
-
-            files = sorted(output_path.glob("part_*.mp4"))
-            # While ffmpeg is still running the last file may be incomplete
-            ready = files if ffmpeg_done.is_set() else files[:-1]
-
-            while yielded < len(ready):
-                yield yielded, ready[yielded]
-                yielded += 1
-
-            if yielded < expected:
-                await asyncio.sleep(SBE_POLL_INTERVAL_SEC)
-
-        await drain_task
-
-    except (asyncio.CancelledError, Exception):
-        if proc.returncode is None:
-            proc.send_signal(signal.SIGTERM)
-        drain_task.cancel()
-        raise
-
-
-async def _read_all(stream: asyncio.StreamReader | None) -> str:
-    if stream is None:
-        return ""
-    chunks: list[str] = []
-    while True:
-        chunk = await stream.read(65536)
-        if not chunk:
-            break
-        chunks.append(chunk.decode("utf-8", "replace"))
-    return "".join(chunks)

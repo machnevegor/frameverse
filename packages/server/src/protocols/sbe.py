@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 
 @dataclass(slots=True)
@@ -17,16 +16,29 @@ class KeyframeData:
     image_data: bytes
 
 
+ClipExtractionMode = Literal["copy", "reencode"]
+
+
 @runtime_checkable
 class SBEProtocol(Protocol):
     """Contract for SBE adapters."""
 
-    def stream_clips(
+    async def list_keyframe_times(
         self,
         source: str,
-        split_times: list[float],
-        output_dir: str,
-    ) -> AsyncGenerator[tuple[int, Path], None]: ...
+    ) -> list[float]:
+        """Return timestamps of keyframes for the primary video stream."""
+
+    async def extract_clip(
+        self,
+        source: str,
+        *,
+        start_time: float,
+        end_time: float,
+        output_path: str,
+        mode: ClipExtractionMode,
+    ) -> Path:
+        """Extract one scene clip and return the produced file path."""
 
     async def extract_keyframes(
         self,

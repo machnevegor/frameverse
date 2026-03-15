@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
+from bisect import bisect_right
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
@@ -16,11 +18,14 @@ from src.api.controllers._mappers import _api_url
 from src.config import (
     ANN_PREVIOUS_SCENES_CONTEXT_NUM,
     ANN_TRANSCRIPT_SIDE_CONTEXT_SEC,
+    KEYFRAMES_CONCURRENCY,
     KEYFRAMES_MIN_GAP_SEC,
     KEYFRAMES_MIN_SCORE_PERCENTILE,
     KEYFRAMES_PER_SCENE,
     PRESIGNED_URL_TTL_SEC,
-    SBE_CONCURRENCY,
+    SBE_COPY_CONCURRENCY,
+    SBE_KEYFRAME_ALIGNMENT_TOLERANCE_SEC,
+    SBE_REENCODE_CONCURRENCY,
 )
 from src.db.models import MovieModel
 from src.domain import (
@@ -33,7 +38,7 @@ from src.protocols.ann import ANNProtocol
 from src.protocols.asr import ASRProtocol
 from src.protocols.emb import EMBProtocol
 from src.protocols.sbd import SBDProtocol
-from src.protocols.sbe import SBEProtocol
+from src.protocols.sbe import ClipExtractionMode, SBEProtocol
 from src.protocols.storage import StorageProtocol
 from src.services.frame import FrameService
 from src.services.movie import MovieService
@@ -41,6 +46,30 @@ from src.services.scene import SceneService
 from src.services.task import TaskService
 
 logger = structlog.get_logger(__name__)
+
+
+@dataclass(slots=True, frozen=True)
+class SceneMaterializationPlan:
+    scene_id: UUID
+    position: int
+    start_time: float
+    end_time: float
+    clip_path: Path
+    clip_mode: ClipExtractionMode
+    scene_prefix: str
+
+
+@dataclass(slots=True, frozen=True)
+class SceneVideoUploadedEvent:
+    scene_id: UUID
+    video_key: str
+
+
+@dataclass(slots=True, frozen=True)
+class SceneArtifactsReadyEvent:
+    scene_id: UUID
+    transcript: dict
+    frame_rows: list[tuple[int, float, float, str]]
 
 
 class PipelineService:
@@ -213,90 +242,61 @@ class PipelineService:
                 clips_dir = tmp_path / "clips"
                 clips_dir.mkdir()
                 source_path.write_bytes(await self.storage.download(movie.video_s3_key))
-
-                split_times = [round(float(s.start), 6) for s in scenes]
+                keyframe_times = await self.sbe.list_keyframe_times(str(source_path))
+                plans = self._build_scene_materialization_plans(movie.id, scenes, clips_dir, keyframe_times)
+                copy_count = sum(1 for plan in plans if plan.clip_mode == "copy")
+                reencode_count = len(plans) - copy_count
 
                 logger.info(
                     "materialize_scenes started",
                     scenes=len(scenes),
-                    split_times=len(split_times),
+                    source_keyframes=len(keyframe_times),
+                    copy_scenes=copy_count,
+                    reencode_scenes=reencode_count,
                 )
 
                 transcript_source = movie.transcript or []
-                prepared: dict[int, tuple[str, SceneTranscript, list[tuple[int, float, float, str]]]] = {}
-                semaphore = asyncio.Semaphore(SBE_CONCURRENCY)
+                persist_queue: asyncio.Queue[SceneVideoUploadedEvent | SceneArtifactsReadyEvent] = asyncio.Queue()
+                workers_done = asyncio.Event()
+                copy_semaphore = asyncio.Semaphore(SBE_COPY_CONCURRENCY)
+                reencode_semaphore = asyncio.Semaphore(SBE_REENCODE_CONCURRENCY)
+                keyframes_semaphore = asyncio.Semaphore(KEYFRAMES_CONCURRENCY)
 
-                async def _process_clip(scene_idx: int, clip_path: Path) -> None:
-                    scene = scenes[scene_idx]
-                    scene_prefix = f"movies/{movie.id}/scenes/{scene.id}"
+                async def _run_workers() -> None:
                     try:
-                        await self.storage.delete_prefix(f"{scene_prefix}/")
-                        scene_video_key = f"{scene_prefix}/video.mp4"
-                        await self.storage.upload_file(scene_video_key, str(clip_path), "video/mp4")
-
-                        keyframes = await self.sbe.extract_keyframes(
-                            str(clip_path),
-                            max_keyframes=KEYFRAMES_PER_SCENE,
-                            min_gap_sec=KEYFRAMES_MIN_GAP_SEC,
-                            min_score_percentile=KEYFRAMES_MIN_SCORE_PERCENTILE,
-                        )
-
-                        frame_rows: list[tuple[int, float, float, str]] = []
-                        for position, kf in enumerate(keyframes):
-                            frame_key = f"{scene_prefix}/frames/{position:06d}.jpg"
-                            await self.storage.upload(frame_key, kf.image_data, "image/jpeg")
-                            frame_rows.append((position, kf.timestamp, kf.score, frame_key))
-
-                        scene_transcript = self._slice_transcript(
-                            transcript_source,
-                            scene_start=float(scene.start),
-                            scene_end=float(scene.end),
-                        )
-                        prepared[scene_idx] = (scene_video_key, scene_transcript, frame_rows)
+                        async with asyncio.TaskGroup() as tg:
+                            for plan in plans:
+                                tg.create_task(
+                                    self._materialize_scene(
+                                        plan,
+                                        source_path=source_path,
+                                        transcript_source=transcript_source,
+                                        persist_queue=persist_queue,
+                                        copy_semaphore=copy_semaphore,
+                                        reencode_semaphore=reencode_semaphore,
+                                        keyframes_semaphore=keyframes_semaphore,
+                                    )
+                                )
                     finally:
-                        clip_path.unlink(missing_ok=True)
+                        workers_done.set()
 
-                async def _worker(scene_idx: int, clip_path: Path) -> None:
-                    async with semaphore:
-                        await _process_clip(scene_idx, clip_path)
-
-                # Stream clips from ffmpeg and process each as soon as it is ready.
-                # TaskGroup waits for all workers before exiting the block.
-                # Unwrap ExceptionGroup so Temporal sees the actual root cause.
                 try:
                     async with asyncio.TaskGroup() as tg:
-                        async for scene_idx, clip_path in self.sbe.stream_clips(
-                            str(source_path), split_times, str(clips_dir)
-                        ):
-                            tg.create_task(_worker(scene_idx, clip_path))
+                        tg.create_task(
+                            self._persist_materialization_events(
+                                task_id=task_id,
+                                movie_id=movie.id,
+                                persist_queue=persist_queue,
+                                workers_done=workers_done,
+                            )
+                        )
+                        tg.create_task(_run_workers())
                 except BaseExceptionGroup as eg:
                     first = eg.exceptions[0]
                     logger.error("materialize_scenes TaskGroup failed", exc_info=eg)
                     if isinstance(first, Exception):
                         raise first from None
                     raise
-
-            missing = [i for i in range(len(scenes)) if i not in prepared]
-            if missing:
-                raise RuntimeError(f"Scenes not processed after extraction: indices {missing}")
-
-            # SQLAlchemy AsyncSession requires strictly sequential DB writes
-            for scene_idx, scene in enumerate(scenes):
-                video_key, scene_transcript, frame_rows = prepared[scene_idx]
-                await self.frame_service.delete_by_scene(scene.id)
-                for position, timestamp, score, frame_key in frame_rows:
-                    await self.frame_service.create(
-                        movie_id=movie.id,
-                        scene_id=scene.id,
-                        position=position,
-                        timestamp=timestamp,
-                        score=score,
-                        image_s3_key=frame_key,
-                    )
-                scene.video_s3_key = video_key
-                scene.transcript = scene_transcript.model_dump(mode="json")
-                await self.task_service.increment_progress(task_id, "scenes_extracted")
-                await self.session.flush()
 
     async def annotate_scene(self, task_id: UUID, scene_id: UUID) -> None:
         task = await self._get_task(task_id)
@@ -422,6 +422,154 @@ class PipelineService:
         await self.scene_service.cancel_non_terminal_for_movie(movie_id)
         await self.session.flush()
 
+    def _build_scene_materialization_plans(
+        self,
+        movie_id: UUID,
+        scenes: list,
+        clips_dir: Path,
+        keyframe_times: list[float],
+    ) -> list[SceneMaterializationPlan]:
+        plans: list[SceneMaterializationPlan] = []
+        for scene in scenes:
+            mode: ClipExtractionMode = (
+                "copy" if self._is_keyframe_aligned(float(scene.start), keyframe_times) else "reencode"
+            )
+            plans.append(
+                SceneMaterializationPlan(
+                    scene_id=scene.id,
+                    position=int(scene.position),
+                    start_time=float(scene.start),
+                    end_time=float(scene.end),
+                    clip_path=clips_dir / f"{int(scene.position):06d}.mp4",
+                    clip_mode=mode,
+                    scene_prefix=f"movies/{movie_id}/scenes/{scene.id}",
+                )
+            )
+        return plans
+
+    async def _materialize_scene(
+        self,
+        plan: SceneMaterializationPlan,
+        *,
+        source_path: Path,
+        transcript_source: list[dict],
+        persist_queue: asyncio.Queue[SceneVideoUploadedEvent | SceneArtifactsReadyEvent],
+        copy_semaphore: asyncio.Semaphore,
+        reencode_semaphore: asyncio.Semaphore,
+        keyframes_semaphore: asyncio.Semaphore,
+    ) -> None:
+        clip_semaphore = copy_semaphore if plan.clip_mode == "copy" else reencode_semaphore
+        scene_video_key = f"{plan.scene_prefix}/video.mp4"
+
+        logger.info(
+            "scene materialization started",
+            scene_id=str(plan.scene_id),
+            position=plan.position,
+            mode=plan.clip_mode,
+        )
+
+        clip_path = plan.clip_path
+        async with clip_semaphore:
+            clip_path = await self.sbe.extract_clip(
+                str(source_path),
+                start_time=plan.start_time,
+                end_time=plan.end_time,
+                output_path=str(plan.clip_path),
+                mode=plan.clip_mode,
+            )
+
+        try:
+            await self.storage.delete_prefix(f"{plan.scene_prefix}/")
+            await self.storage.upload_file(scene_video_key, str(clip_path), "video/mp4")
+            await persist_queue.put(SceneVideoUploadedEvent(scene_id=plan.scene_id, video_key=scene_video_key))
+
+            async with keyframes_semaphore:
+                keyframes = await self.sbe.extract_keyframes(
+                    str(clip_path),
+                    max_keyframes=KEYFRAMES_PER_SCENE,
+                    min_gap_sec=KEYFRAMES_MIN_GAP_SEC,
+                    min_score_percentile=KEYFRAMES_MIN_SCORE_PERCENTILE,
+                )
+
+            frame_rows: list[tuple[int, float, float, str]] = []
+            for position, keyframe in enumerate(keyframes):
+                frame_key = f"{plan.scene_prefix}/frames/{position:06d}.jpg"
+                await self.storage.upload(frame_key, keyframe.image_data, "image/jpeg")
+                frame_rows.append((position, keyframe.timestamp, keyframe.score, frame_key))
+
+            scene_transcript = self._slice_transcript(
+                transcript_source,
+                scene_start=plan.start_time,
+                scene_end=plan.end_time,
+            )
+            await persist_queue.put(
+                SceneArtifactsReadyEvent(
+                    scene_id=plan.scene_id,
+                    transcript=scene_transcript.model_dump(mode="json"),
+                    frame_rows=frame_rows,
+                )
+            )
+            logger.info(
+                "scene materialization finished",
+                scene_id=str(plan.scene_id),
+                position=plan.position,
+                mode=plan.clip_mode,
+                keyframes=len(frame_rows),
+            )
+        finally:
+            clip_path.unlink(missing_ok=True)
+
+    async def _persist_materialization_events(
+        self,
+        *,
+        task_id: UUID,
+        movie_id: UUID,
+        persist_queue: asyncio.Queue[SceneVideoUploadedEvent | SceneArtifactsReadyEvent],
+        workers_done: asyncio.Event,
+    ) -> None:
+        while True:
+            if workers_done.is_set() and persist_queue.empty():
+                return
+
+            try:
+                event = await asyncio.wait_for(persist_queue.get(), timeout=0.5)
+            except TimeoutError:
+                continue
+
+            try:
+                if isinstance(event, SceneVideoUploadedEvent):
+                    await self._persist_scene_video_upload(task_id, event)
+                else:
+                    await self._persist_scene_artifacts(movie_id, event)
+            except Exception:
+                await self.session.rollback()
+                raise
+            finally:
+                persist_queue.task_done()
+
+    async def _persist_scene_video_upload(self, task_id: UUID, event: SceneVideoUploadedEvent) -> None:
+        scene = await self._get_scene(event.scene_id)
+        scene.video_s3_key = event.video_key
+        await self.task_service.increment_progress(task_id, "scenes_extracted")
+        await self.session.commit()
+        logger.info("scene video persisted", scene_id=str(event.scene_id), video_key=event.video_key)
+
+    async def _persist_scene_artifacts(self, movie_id: UUID, event: SceneArtifactsReadyEvent) -> None:
+        scene = await self._get_scene(event.scene_id)
+        await self.frame_service.delete_by_scene(scene.id)
+        for position, timestamp, score, frame_key in event.frame_rows:
+            await self.frame_service.create(
+                movie_id=movie_id,
+                scene_id=scene.id,
+                position=position,
+                timestamp=timestamp,
+                score=score,
+                image_s3_key=frame_key,
+            )
+        scene.transcript = event.transcript
+        await self.session.commit()
+        logger.info("scene artifacts persisted", scene_id=str(event.scene_id), frames=len(event.frame_rows))
+
     async def _get_task(self, task_id: UUID):
         task = await self.task_service.get(task_id)
         if task is None:
@@ -439,6 +587,18 @@ class PipelineService:
         if scene is None:
             raise LookupError("Scene not found")
         return scene
+
+    @staticmethod
+    def _is_keyframe_aligned(scene_start: float, keyframe_times: list[float]) -> bool:
+        if scene_start <= SBE_KEYFRAME_ALIGNMENT_TOLERANCE_SEC:
+            return True
+        if not keyframe_times:
+            return False
+
+        previous_index = bisect_right(keyframe_times, scene_start) - 1
+        if previous_index < 0:
+            return False
+        return (scene_start - keyframe_times[previous_index]) <= SBE_KEYFRAME_ALIGNMENT_TOLERANCE_SEC
 
     @staticmethod
     def _movie_info(movie: MovieModel) -> dict[str, object]:
