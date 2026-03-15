@@ -123,19 +123,19 @@ function SceneSidebarContent({
             <span className="ml-2">({formatTimestamp(scene.duration)})</span>
           </p>
 
-          {scene.annotation && (
-            <>
-              <Separator />
-              <div>
-                <p className="mb-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
-                  Аннотация
-                </p>
-                <p className="text-sm leading-relaxed">
-                  {scene.annotation.text}
-                </p>
-              </div>
-            </>
-          )}
+          <Separator />
+          <div className="space-y-2">
+            <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+              Аннотация
+            </p>
+            {scene.annotation?.text ? (
+              <p className="text-sm leading-relaxed">{scene.annotation.text}</p>
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                Аннотация недоступна
+              </p>
+            )}
+          </div>
 
           <Separator />
           <div className="space-y-3">
