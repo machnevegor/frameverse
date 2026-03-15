@@ -41,11 +41,12 @@ from src.services.search import SearchService
 )
 async def search_scenes_stream(
     session: AsyncSession,
-    query: str = Parameter(min_length=1, description="Natural language search query."),
+    # "query" is a reserved name in Litestar (maps to full MultiDict); use alias instead
+    q: str = Parameter(alias="query", min_length=1, description="Natural language search query."),
     movie_id: UUID | None = Parameter(default=None, required=False, description="Restrict search to one movie."),
 ) -> ServerSentEvent:
     service = SearchService(session, get_openrouter(), get_storage())
-    return ServerSentEvent(service.search(query, movie_id))
+    return ServerSentEvent(service.search(q, movie_id))
 
 
 @get(
