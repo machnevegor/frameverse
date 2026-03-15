@@ -11,10 +11,12 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/80 px-4 text-muted-foreground backdrop-blur-md">
-      {/* Desktop: logo left | nav center | theme right
-          Mobile:  logo left + theme right | nav full-width row below */}
-      <div className="page-wrap grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 py-3 sm:grid-cols-[1fr_auto_1fr] sm:py-4">
-        {/* Logo — left */}
+      {/*
+        Desktop (sm+): 3-column grid — logo | nav | theme
+        Mobile:        row 1: logo + theme  |  row 2: nav (full width)
+      */}
+      <div className="page-wrap grid grid-cols-[1fr_auto] items-center gap-x-3 py-3 sm:grid-cols-[1fr_auto_1fr] sm:py-4">
+        {/* Col 1 — Logo (both) */}
         <div className="flex items-center">
           <Link
             className="inline-flex items-center gap-2 font-medium text-foreground text-sm no-underline transition hover:opacity-80"
@@ -25,8 +27,13 @@ export default function Header() {
           </Link>
         </div>
 
-        {/* Nav — center (desktop only, hidden on mobile) */}
-        <nav className="order-3 col-span-2 flex w-full items-center gap-4 pb-1 text-sm sm:order-2 sm:col-span-1 sm:w-auto sm:justify-center sm:pb-0">
+        {/* Col 3 — ThemeToggle right (both) */}
+        <div className="flex items-center justify-end sm:order-3">
+          <ThemeToggle />
+        </div>
+
+        {/* Col 2 — Nav: center on desktop, full-width second row on mobile */}
+        <nav className="col-span-2 flex items-center gap-4 py-1 text-sm sm:order-2 sm:col-span-1 sm:justify-center sm:py-0">
           {!isHome && (
             <Link
               activeOptions={{ exact: true }}
@@ -47,11 +54,6 @@ export default function Header() {
             </Link>
           )}
         </nav>
-
-        {/* Theme toggle — right */}
-        <div className="flex items-center justify-end">
-          <ThemeToggle />
-        </div>
       </div>
     </header>
   );
