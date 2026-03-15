@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { SearchX, Sparkles } from "lucide-react";
+import { SearchX } from "lucide-react";
 import { motion } from "motion/react";
 import { parseAsString, useQueryState } from "nuqs";
 import { Fragment } from "react";
@@ -45,19 +45,11 @@ export function SearchResults({ groups, summary }: SearchResultsProps) {
           initial={{ opacity: 0, y: 8 }}
           transition={{ duration: 0.3 }}
         >
-          <Card>
-            <CardHeader className="pt-4 pb-2">
-              <div className="flex items-center gap-2">
-                <Sparkles className="size-4 text-muted-foreground" />
-                <span className="font-medium text-sm">Резюме поиска</span>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-0 pb-4">
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                {summary}
-              </p>
-            </CardContent>
-          </Card>
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              {summary}
+            </p>
+          </div>
         </motion.div>
       )}
       {groups.map((group, i) => (

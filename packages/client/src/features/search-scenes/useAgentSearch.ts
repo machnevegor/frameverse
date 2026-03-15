@@ -4,12 +4,16 @@ import { API_BASE } from "#/shared/config/constants";
 
 export type SearchStatus = "idle" | "streaming" | "done" | "error";
 
+// SSE events have no inherent ID — attach a monotonic seq number for stable React keys
+export type SeqEvent = SearchEvent & { _seq: number };
+
 interface SearchState {
   status: SearchStatus;
-  events: SearchEvent[];
+  events: SeqEvent[];
   groups: SearchResultGroup[];
   summary: string | null;
   error: string | null;
+  _seq: number;
 }
 
 type SearchAction =
@@ -25,6 +29,7 @@ const initialState: SearchState = {
   groups: [],
   summary: null,
   error: null,
+  _seq: 0,
 };
 
 function reducer(state: SearchState, action: SearchAction): SearchState {
@@ -32,7 +37,11 @@ function reducer(state: SearchState, action: SearchAction): SearchState {
     case "START":
       return { ...initialState, status: "streaming" };
     case "EVENT":
-      return { ...state, events: [...state.events, action.event] };
+      return {
+        ...state,
+        events: [...state.events, { ...action.event, _seq: state._seq }],
+        _seq: state._seq + 1,
+      };
     case "DONE":
       return {
         ...state,

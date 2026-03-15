@@ -87,12 +87,10 @@ function SegmentGroup({ segments, label, muted }: SegmentGroupProps) {
         </p>
       )}
       <div className="space-y-2">
-        {segments.map((seg, i) => (
+        {segments.map((seg) => (
           <div
             className={`flex gap-2 text-sm ${muted ? "text-muted-foreground" : ""}`}
-            // stable enough: transcript segments are immutable, ordered list
-            // biome-ignore lint/suspicious/noArrayIndexKey: transcript segments are ordered and have no stable id
-            key={`${seg.start}-${i}`}
+            key={seg.start}
           >
             <span className="mt-0.5 shrink-0 text-muted-foreground text-xs tabular-nums">
               {formatTimestamp(seg.start)}

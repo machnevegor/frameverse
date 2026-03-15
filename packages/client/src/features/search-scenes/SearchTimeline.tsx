@@ -1,10 +1,9 @@
 import { Loader2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import type { SearchEvent } from "#/shared/api/types";
-import type { SearchStatus } from "./useAgentSearch";
+import type { SearchStatus, SeqEvent } from "./useAgentSearch";
 
 interface SearchTimelineProps {
-  events: SearchEvent[];
+  events: SeqEvent[];
   status: SearchStatus;
 }
 
@@ -34,13 +33,12 @@ export function SearchTimeline({ events, status }: SearchTimelineProps) {
             </div>
           )}
           <div className="divide-y divide-border">
-            {visible.map((event, i) => (
+            {visible.map((event) => (
               <motion.div
                 animate={{ opacity: 1 }}
                 className="px-4 py-2.5"
                 initial={{ opacity: 0 }}
-                // biome-ignore lint/suspicious/noArrayIndexKey: SSE events have no stable ID
-                key={i}
+                key={event._seq}
                 transition={{ duration: 0.2 }}
               >
                 <EventRow event={event} />
@@ -53,7 +51,7 @@ export function SearchTimeline({ events, status }: SearchTimelineProps) {
   );
 }
 
-function EventRow({ event }: { event: SearchEvent }) {
+function EventRow({ event }: { event: SeqEvent }) {
   switch (event.type) {
     case "thinking":
       return (
