@@ -15,9 +15,9 @@ function DashboardLayout() {
 
   return (
     <div className="page-wrap py-8">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <h1 className="font-semibold text-2xl">Дашборд</h1>
-        <nav className="flex items-center gap-2">
+        <nav className="flex flex-wrap items-center gap-2">
           <Link
             className={`rounded-lg px-3 py-1.5 text-sm transition ${
               !isUpload
