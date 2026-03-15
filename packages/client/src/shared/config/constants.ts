@@ -1,4 +1,4 @@
-import type { MovieStatus, SceneStatus } from "../api/types";
+import type { MovieStatus, SceneStatus, SearchEvent } from "../api/types";
 
 export const API_BASE =
   typeof window === "undefined" ? "https://frameverse.ru/api/v0" : "/api/v0";
@@ -71,3 +71,12 @@ export const PIPELINE_STAGE_LABELS = [
   { key: "scenes_annotated", label: "Готовим описания сцен" },
   { key: "scenes_embedded", label: "Подключаем умный поиск" },
 ] as const;
+
+export const SEARCH_EVENT_LABEL: Record<SearchEvent["type"], string> = {
+  search_started: "Начинаем поиск",
+  thinking: "Анализируем запрос",
+  searching: "Ищем совпадения",
+  results_found: "Нашли похожие сцены",
+  conclusion: "Формируем ответ",
+  error: "Ошибка поиска",
+};

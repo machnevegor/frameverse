@@ -1,5 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { SEARCH_EVENT_LABEL } from "#/shared/config/constants";
 import type { SearchStatus, SeqEvent } from "./useAgentSearch";
 
 interface SearchTimelineProps {
@@ -8,9 +9,7 @@ interface SearchTimelineProps {
 }
 
 export function SearchTimeline({ events, status }: SearchTimelineProps) {
-  const visible = events.filter(
-    (e) => e.type !== "conclusion" && e.type !== "search_started",
-  );
+  const visible = events.filter((e) => e.type !== "conclusion");
   const show =
     (status === "streaming" || status === "done") && visible.length > 0;
 
@@ -28,7 +27,7 @@ export function SearchTimeline({ events, status }: SearchTimelineProps) {
             <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-2.5">
               <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
               <span className="font-medium text-muted-foreground text-xs">
-                Агент анализирует запрос
+                {SEARCH_EVENT_LABEL.searching}
               </span>
             </div>
           )}
@@ -56,30 +55,38 @@ function EventRow({ event }: { event: SeqEvent }) {
     case "thinking":
       return (
         <p className="text-muted-foreground text-sm italic">
-          {event.data.message}
+          {SEARCH_EVENT_LABEL.thinking}: {event.data.message}
+        </p>
+      );
+    case "search_started":
+      return (
+        <p className="text-muted-foreground text-sm">
+          {SEARCH_EVENT_LABEL.search_started}:{" "}
+          <span className="font-medium text-foreground">{event.data.query}</span>
         </p>
       );
     case "searching":
       return (
         <p className="text-muted-foreground text-sm">
-          Уточняю запрос:{" "}
-          <span className="font-medium text-foreground">
-            {event.data.text_query}
-          </span>
+          {SEARCH_EVENT_LABEL.searching}:{" "}
+          <span className="font-medium text-foreground">{event.data.query}</span>
         </p>
       );
     case "results_found":
       return (
         <p className="text-muted-foreground text-sm">
-          Найдено{" "}
+          {SEARCH_EVENT_LABEL.results_found}:{" "}
           <span className="font-medium text-foreground">
             {event.data.count}
-          </span>{" "}
-          кандидатов
+          </span>
         </p>
       );
     case "error":
-      return <p className="text-destructive text-sm">{event.data.message}</p>;
+      return (
+        <p className="text-destructive text-sm">
+          {SEARCH_EVENT_LABEL.error}: {event.data.message}
+        </p>
+      );
     default:
       return null;
   }

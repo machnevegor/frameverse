@@ -201,8 +201,7 @@ interface ThinkingPayload {
 }
 
 interface SearchingPayload {
-  text_query: string;
-  visual_query: string;
+  query: string;
 }
 
 interface ResultsFoundPayload {
