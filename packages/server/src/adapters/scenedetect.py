@@ -12,7 +12,7 @@ import numpy as np
 import structlog
 from scenedetect import ContentDetector, detect
 
-from src.config import SBD_THRESHOLD
+from src.config import KEYFRAMES_EXTRACTION_TIMEOUT_SEC, KEYFRAMES_FRAME_SAMPLE_STEP, SBD_THRESHOLD
 from src.protocols.sbd import DetectedScene, SBDProtocol
 from src.protocols.sbe import KeyframeData, SBEProtocol, SceneClipMode
 
@@ -224,6 +224,8 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
             max_keyframes,
             min_gap_sec,
             min_score_percentile,
+            KEYFRAMES_EXTRACTION_TIMEOUT_SEC,
+            KEYFRAMES_FRAME_SAMPLE_STEP,
         )
         logger.info(
             "sbe.keyframe_extract.finished",
@@ -239,6 +241,8 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
         max_keyframes: int,
         min_gap_sec: float,
         min_score_percentile: int,
+        max_processing_sec: float,
+        frame_sample_step: int,
     ) -> list[KeyframeData]:
         capture = cv2.VideoCapture(clip_path)
         if not capture.isOpened():
@@ -249,11 +253,21 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
             candidates: list[tuple[float, float, np.ndarray]] = []
             previous_gray: np.ndarray | None = None
             frame_index = 0
+            sample_step = max(1, int(frame_sample_step))
+            deadline = time.perf_counter() + max(0.0, float(max_processing_sec))
+            timed_out = False
+            center_weight: float | None = None
 
             while True:
+                if time.perf_counter() >= deadline:
+                    timed_out = True
+                    break
                 ok, frame = capture.read()
                 if not ok:
                     break
+                if frame_index % sample_step != 0:
+                    frame_index += 1
+                    continue
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
                 if previous_gray is None:
@@ -265,19 +279,28 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
                 focus = float(cv2.Laplacian(gray, cv2.CV_64F).var())
                 focus_norm = min(focus / 1000.0, 1.0)
 
-                h, w = gray.shape
-                center_x = w / 2.0
-                center_y = h / 2.0
-                y_indices, x_indices = np.indices(gray.shape)
-                distance = np.sqrt((x_indices - center_x) ** 2 + (y_indices - center_y) ** 2)
-                distance /= max(distance.max(), 1.0)
-                center_weight = float(np.mean(1.0 - distance))
+                if center_weight is None:
+                    h, w = gray.shape
+                    center_x = w / 2.0
+                    center_y = h / 2.0
+                    y_indices, x_indices = np.indices(gray.shape)
+                    distance = np.sqrt((x_indices - center_x) ** 2 + (y_indices - center_y) ** 2)
+                    distance /= max(distance.max(), 1.0)
+                    center_weight = float(np.mean(1.0 - distance))
 
                 score = 0.55 * motion + 0.30 * focus_norm + 0.15 * center_weight
                 timestamp = frame_index / fps
                 candidates.append((timestamp, score, frame.copy()))
                 previous_gray = gray
                 frame_index += 1
+
+            if timed_out:
+                logger.warning(
+                    "sbe.keyframe_extract.timeout_reached",
+                    clip_path=clip_path,
+                    timeout_sec=max_processing_sec,
+                    sampled_candidates=len(candidates),
+                )
 
             if not candidates:
                 return []

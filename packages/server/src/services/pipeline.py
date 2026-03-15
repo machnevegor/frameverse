@@ -19,7 +19,6 @@ from src.config import (
     ANN_PREVIOUS_SCENES_CONTEXT_NUM,
     ANN_TRANSCRIPT_SIDE_CONTEXT_SEC,
     KEYFRAMES_CONCURRENCY,
-    KEYFRAMES_EXTRACTION_TIMEOUT_SEC,
     KEYFRAMES_MIN_GAP_SEC,
     KEYFRAMES_MIN_SCORE_PERCENTILE,
     KEYFRAMES_PER_SCENE,
@@ -62,29 +61,30 @@ class SceneMaterializationPlan:
 
 
 @dataclass(slots=True, frozen=True)
-class SceneClipExtractedEvent:
+class SceneProgressEvent:
     clip_index: int
     scene_id: UUID
     scene_position: int
+
+
+@dataclass(slots=True, frozen=True)
+class SceneClipExtractedEvent(SceneProgressEvent):
     clip_mode: SceneClipMode
 
 
 @dataclass(slots=True, frozen=True)
-class SceneClipUploadedEvent:
-    clip_index: int
-    scene_id: UUID
-    scene_position: int
+class SceneClipUploadedEvent(SceneProgressEvent):
     clip_mode: SceneClipMode
     video_key: str
 
 
 @dataclass(slots=True, frozen=True)
-class SceneMaterializedEvent:
-    clip_index: int
-    scene_id: UUID
-    scene_position: int
+class SceneMaterializedEvent(SceneProgressEvent):
     transcript: dict
     frame_rows: list[tuple[int, float, float, str]]
+
+
+MaterializationEvent = SceneClipExtractedEvent | SceneClipUploadedEvent | SceneMaterializedEvent
 
 
 class PipelineService:
@@ -278,9 +278,7 @@ class PipelineService:
                 )
 
                 transcript_source = movie.transcript or []
-                persist_queue: asyncio.Queue[
-                    SceneClipExtractedEvent | SceneClipUploadedEvent | SceneMaterializedEvent
-                ] = asyncio.Queue()
+                persist_queue: asyncio.Queue[MaterializationEvent] = asyncio.Queue()
                 workers_done = asyncio.Event()
                 copy_semaphore = asyncio.Semaphore(SBE_COPY_CONCURRENCY)
                 reencode_semaphore = asyncio.Semaphore(SBE_REENCODE_CONCURRENCY)
@@ -483,7 +481,7 @@ class PipelineService:
         *,
         source_path: Path,
         transcript_source: list[dict],
-        persist_queue: asyncio.Queue[SceneClipExtractedEvent | SceneClipUploadedEvent | SceneMaterializedEvent],
+        persist_queue: asyncio.Queue[MaterializationEvent],
         copy_semaphore: asyncio.Semaphore,
         reencode_semaphore: asyncio.Semaphore,
         keyframes_semaphore: asyncio.Semaphore,
@@ -543,27 +541,13 @@ class PipelineService:
                 )
             )
 
-            try:
-                async with keyframes_semaphore:
-                    keyframes = await asyncio.wait_for(
-                        self.sbe.extract_clip_keyframes(
-                            str(clip_path),
-                            max_keyframes=KEYFRAMES_PER_SCENE,
-                            min_gap_sec=KEYFRAMES_MIN_GAP_SEC,
-                            min_score_percentile=KEYFRAMES_MIN_SCORE_PERCENTILE,
-                        ),
-                        timeout=KEYFRAMES_EXTRACTION_TIMEOUT_SEC,
-                    )
-            except TimeoutError:
-                logger.warning(
-                    "scene keyframes extraction timeout",
-                    clip_index=plan.clip_index,
-                    scene_id=str(plan.scene_id),
-                    scene_position=plan.scene_position,
-                    clip_mode=plan.clip_mode,
-                    timeout_sec=KEYFRAMES_EXTRACTION_TIMEOUT_SEC,
+            async with keyframes_semaphore:
+                keyframes = await self.sbe.extract_clip_keyframes(
+                    str(clip_path),
+                    max_keyframes=KEYFRAMES_PER_SCENE,
+                    min_gap_sec=KEYFRAMES_MIN_GAP_SEC,
+                    min_score_percentile=KEYFRAMES_MIN_SCORE_PERCENTILE,
                 )
-                keyframes = []
 
             logger.info(
                 "scene keyframes extracted",
@@ -609,7 +593,7 @@ class PipelineService:
         *,
         task_id: UUID,
         total_scenes: int,
-        persist_queue: asyncio.Queue[SceneClipExtractedEvent | SceneClipUploadedEvent | SceneMaterializedEvent],
+        persist_queue: asyncio.Queue[MaterializationEvent],
         workers_done: asyncio.Event,
     ) -> None:
         clipped_persisted = 0
