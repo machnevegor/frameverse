@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 from langfuse import get_client
 
-from src.config import ASSEMBLYAI_BASE_URL, settings
+from src.config import ASR_SILENCE_GAP_SEC, ASSEMBLYAI_BASE_URL, settings
 from src.domain import TranscriptSegment
 from src.protocols.asr import ASRProtocol, TranscriptResult
 
@@ -106,19 +106,50 @@ class AssemblyAIAdapter(ASRProtocol):
     async def _transcribe_impl(self, audio_url: str) -> TranscriptResult:
         transcript_id = await self._submit(audio_url)
         payload = await self._poll_until_done(transcript_id)
-        utterances = payload.get("utterances", [])
-        segments = [
-            TranscriptSegment(
-                start=float(utterance.get("start", 0.0)) / 1000.0,
-                end=float(utterance.get("end", 0.0)) / 1000.0,
-                text=utterance.get("text", ""),
-                speaker=utterance.get("speaker"),
-            )
-            for utterance in utterances
-        ]
         return TranscriptResult(
             text=payload.get("text", ""),
             language=payload.get("language_code"),
             duration=(float(payload["audio_duration"]) if payload.get("audio_duration") is not None else None),
-            segments=segments,
+            segments=self._build_segments(payload.get("words", [])),
         )
+
+    @staticmethod
+    def _build_segments(words: list[dict]) -> list[TranscriptSegment]:
+        """Group words into segments by speaker change or silence gap >= ASR_SILENCE_GAP_SEC.
+
+        Segments are emitted only for speech regions — silent/music intervals
+        between segments are left as natural gaps in the timeline.
+        """
+        if not words:
+            return []
+
+        segments: list[TranscriptSegment] = []
+        current: list[dict] = [words[0]]
+
+        for word in words[1:]:
+            prev = current[-1]
+            gap_sec = (word["start"] - prev["end"]) / 1000.0
+            speaker_changed = word.get("speaker") != prev.get("speaker")
+
+            if speaker_changed or gap_sec >= ASR_SILENCE_GAP_SEC:
+                segments.append(
+                    TranscriptSegment(
+                        start=current[0]["start"] / 1000.0,
+                        end=current[-1]["end"] / 1000.0,
+                        text=" ".join(w["text"] for w in current),
+                        speaker=current[0].get("speaker"),
+                    )
+                )
+                current = [word]
+            else:
+                current.append(word)
+
+        segments.append(
+            TranscriptSegment(
+                start=current[0]["start"] / 1000.0,
+                end=current[-1]["end"] / 1000.0,
+                text=" ".join(w["text"] for w in current),
+                speaker=current[0].get("speaker"),
+            )
+        )
+        return segments
