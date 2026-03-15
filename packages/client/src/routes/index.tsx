@@ -5,6 +5,7 @@ import { parseAsString, useQueryState } from "nuqs";
 import { SearchBar } from "#/features/search-scenes/SearchBar";
 import { SearchResults } from "#/features/search-scenes/SearchResults";
 import { searchScenes } from "#/shared/api/client";
+import { SEARCH_SCENES_LIMIT } from "#/shared/config/constants";
 import { FrameverseLogo } from "#/shared/ui/FrameverseLogo";
 import { ShinyText } from "#/shared/ui/ShinyText";
 
@@ -66,7 +67,7 @@ const logoVariants = {
 const searchScenesQueryOptions = (q: string) =>
   queryOptions({
     queryKey: ["search", "scenes", q],
-    queryFn: () => searchScenes({ query: q, limit: 20 }),
+    queryFn: () => searchScenes({ query: q, limit: SEARCH_SCENES_LIMIT }),
     enabled: q.length > 0,
     staleTime: 30_000,
   });

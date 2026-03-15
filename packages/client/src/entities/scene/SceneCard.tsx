@@ -11,16 +11,23 @@ interface SceneCardProps {
   scene: Scene | SceneSearchHit;
   active?: boolean;
   onClick?: () => void;
+  /** When false, frame thumbnail is not fetched (for lazy loading in long lists). */
+  enableFrameQuery?: boolean;
 }
 
 function isSearchHit(scene: Scene | SceneSearchHit): scene is SceneSearchHit {
   return "score" in scene;
 }
 
-export function SceneCard({ scene, active, onClick }: SceneCardProps) {
+export function SceneCard({
+  scene,
+  active,
+  onClick,
+  enableFrameQuery = true,
+}: SceneCardProps) {
   const { data: frames } = useQuery({
     ...sceneFramesQueryOptions(scene.id),
-    // only load when scene is active or visible — caller controls this via enabled
+    enabled: enableFrameQuery,
   });
 
   const firstFrame = frames?.[0];
@@ -77,14 +84,16 @@ function FrameThumb({ imageUrl }: FrameThumbProps) {
     );
   }
 
+  const frameId = imageUrl.split("/frames/")[1]?.split("/")[0] ?? "";
   return (
     <img
       alt=""
       className="size-14 shrink-0 rounded object-cover"
+      loading="lazy"
       onError={(e) => {
         (e.currentTarget as HTMLImageElement).style.display = "none";
       }}
-      src={getFrameImageUrl(imageUrl.split("/frames/")[1]?.split("/")[0] ?? "")}
+      src={getFrameImageUrl(frameId)}
     />
   );
 }

@@ -123,7 +123,7 @@ export function MovieTable() {
           </div>
         </div>
       )}
-      <ReactTableDevtools table={table} />
+      {import.meta.env.DEV && <ReactTableDevtools table={table} />}
     </div>
   );
 }

@@ -124,7 +124,7 @@ export function TaskTable() {
         </div>
       )}
 
-      <ReactTableDevtools table={table} />
+      {import.meta.env.DEV && <ReactTableDevtools table={table} />}
     </div>
   );
 }

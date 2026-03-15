@@ -45,9 +45,10 @@ export function SceneSidebar({ scenes, movieId: _movieId }: SceneSidebarProps) {
     <Sheet onOpenChange={(o) => !o && close()} open={isOpen}>
       <SheetContent
         className="flex w-full flex-col p-0 sm:max-w-lg"
+        showCloseButton={false}
         side="right"
       >
-        <SheetHeader className="flex-row items-center justify-between border-b px-4 py-3">
+        <SheetHeader className="flex shrink-0 flex-row items-center justify-between border-b px-4 py-3">
           <SheetTitle className="text-base">
             {currentIndex >= 0
               ? `Сцена ${currentIndex + 1} из ${scenes.length}`
@@ -160,6 +161,7 @@ function SceneSidebarContent({
                     alt={`Кадр ${frame.position + 1}`}
                     className="aspect-video w-full rounded object-cover"
                     key={frame.id}
+                    loading="lazy"
                     src={getFrameImageUrl(frame.id)}
                   />
                 ))}

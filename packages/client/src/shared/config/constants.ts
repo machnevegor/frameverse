@@ -2,6 +2,9 @@ import type { MovieStatus, SceneStatus } from "../api/types";
 
 export const API_BASE = "/api/v0";
 
+export const SEARCH_SCENES_LIMIT = 30;
+export const SEARCH_SCENES_PER_MOVIE = 3;
+
 export const MOVIE_STATUS_LABEL: Record<MovieStatus, string> = {
   queued: "В очереди",
   asr: "Распознавание речи",

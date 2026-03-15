@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { parseAsString, useQueryState } from "nuqs";
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "#/components/ui/badge";
 import { Separator } from "#/components/ui/separator";
 import { Skeleton } from "#/components/ui/skeleton";
@@ -11,6 +12,7 @@ import {
 } from "#/entities/movie/api";
 import { MovieCard } from "#/entities/movie/MovieCard";
 import { SceneCard, SceneCardSkeleton } from "#/entities/scene/SceneCard";
+import type { Scene } from "#/shared/api/types";
 import { formatDuration } from "#/shared/lib/format";
 import { SceneSidebar } from "#/widgets/scene-sidebar/SceneSidebar";
 
@@ -106,7 +108,7 @@ function MoviePage() {
                   ease: "easeOut",
                 }}
               >
-                <SceneCard
+                <LazySceneCard
                   active={scene.id === selectedSceneId}
                   onClick={() => void setSelectedSceneId(scene.id)}
                   scene={scene}
@@ -120,5 +122,40 @@ function MoviePage() {
       {/* Scene sidebar sheet */}
       {scenes && <SceneSidebar movieId={movieId} scenes={scenes} />}
     </main>
+  );
+}
+
+function LazySceneCard({
+  scene,
+  active,
+  onClick,
+}: {
+  scene: Scene;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { rootMargin: "200px", threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref}>
+      <SceneCard
+        active={active}
+        enableFrameQuery={inView}
+        onClick={onClick}
+        scene={scene}
+      />
+    </div>
   );
 }

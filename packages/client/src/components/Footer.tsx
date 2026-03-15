@@ -5,7 +5,12 @@ export default function Footer() {
   return (
     <footer className="border-t px-4 py-5 text-muted-foreground">
       <div className="page-wrap flex items-center justify-between">
-        <FrameverseLogo className="opacity-40" size={16} />
+        <div className="flex items-center gap-2">
+          <FrameverseLogo className="opacity-40" size={16} />
+          <span className="font-medium text-foreground text-sm">
+            фрейм вёрс
+          </span>
+        </div>
         <a
           aria-label="GitHub"
           className="transition hover:text-foreground"

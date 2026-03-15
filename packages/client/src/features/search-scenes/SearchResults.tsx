@@ -7,6 +7,7 @@ import { movieQueryOptions } from "#/entities/movie/api";
 import { MovieCard } from "#/entities/movie/MovieCard";
 import { SceneCard, SceneCardSkeleton } from "#/entities/scene/SceneCard";
 import type { SceneSearchHit } from "#/shared/api/types";
+import { SEARCH_SCENES_PER_MOVIE } from "#/shared/config/constants";
 
 interface SearchResultsProps {
   hits: SceneSearchHit[];
@@ -65,10 +66,12 @@ function groupByMovie(hits: SceneSearchHit[]): MovieGroup[] {
     arr.push(hit);
     map.set(hit.movie_id, arr);
   }
-  return Array.from(map.entries()).map(([movieId, scenes]) => ({
-    movieId,
-    scenes,
-  }));
+  return Array.from(map.entries()).map(([movieId, scenes]) => {
+    const topByScore = [...scenes]
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+      .slice(0, SEARCH_SCENES_PER_MOVIE);
+    return { movieId, scenes: topByScore };
+  });
 }
 
 interface MovieResultGroupProps {
