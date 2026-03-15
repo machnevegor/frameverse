@@ -224,16 +224,23 @@ class SearchService:
         visual_query: str,
         movie_id: UUID | None,
     ) -> tuple[list[int], list[dict[str, Any]]]:
-        """Embed queries, run 3-channel search in parallel, register new candidates."""
+        """Embed queries (parallel, different I/O), then run 3-channel DB search sequentially.
+        asyncio.gather is safe for HTTP calls but not for concurrent queries on one AsyncSession.
+        """
         (text_vecs,), (image_vecs,) = await asyncio.gather(
             self._openrouter.embed_texts([text_query]),
             self._openrouter.embed_visual_queries([visual_query]),
         )
 
-        transcript_hits, annotation_hits, image_hits = await asyncio.gather(
-            self._scene_svc.search_by_transcript(text_vecs, movie_id=movie_id, limit=SEARCH_CANDIDATES_PER_CHANNEL),
-            self._scene_svc.search_by_annotation(text_vecs, movie_id=movie_id, limit=SEARCH_CANDIDATES_PER_CHANNEL),
-            self._scene_svc.search_by_image(image_vecs, movie_id=movie_id, limit=SEARCH_CANDIDATES_PER_CHANNEL),
+        # sequential DB queries — AsyncSession does not support concurrent operations
+        transcript_hits = await self._scene_svc.search_by_transcript(
+            text_vecs, movie_id=movie_id, limit=SEARCH_CANDIDATES_PER_CHANNEL
+        )
+        annotation_hits = await self._scene_svc.search_by_annotation(
+            text_vecs, movie_id=movie_id, limit=SEARCH_CANDIDATES_PER_CHANNEL
+        )
+        image_hits = await self._scene_svc.search_by_image(
+            image_vecs, movie_id=movie_id, limit=SEARCH_CANDIDATES_PER_CHANNEL
         )
 
         # aggregate per-channel distances by scene_id; keep minimum per channel
