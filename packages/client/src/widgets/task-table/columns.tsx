@@ -59,7 +59,7 @@ export const taskColumns: ColumnDef<Task>[] = [
     cell: ({ row }) => {
       const p = row.original.progress;
       if (!p) return <span className="text-muted-foreground text-sm">—</span>;
-      return <TaskProgressCompact progress={p} />;
+      return <TaskProgressCompact progress={p} status={row.original.status} />;
     },
   },
   {
