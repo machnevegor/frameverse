@@ -19,6 +19,7 @@ from src.config import (
     ANN_PREVIOUS_SCENES_CONTEXT_NUM,
     ANN_TRANSCRIPT_SIDE_CONTEXT_SEC,
     KEYFRAMES_CONCURRENCY,
+    KEYFRAMES_EXTRACTION_TIMEOUT_SEC,
     KEYFRAMES_MIN_GAP_SEC,
     KEYFRAMES_MIN_SCORE_PERCENTILE,
     KEYFRAMES_PER_SCENE,
@@ -50,6 +51,7 @@ logger = structlog.get_logger(__name__)
 
 @dataclass(slots=True, frozen=True)
 class SceneMaterializationPlan:
+    clip_index: int
     scene_id: UUID
     scene_position: int
     scene_start_sec: float
@@ -61,6 +63,7 @@ class SceneMaterializationPlan:
 
 @dataclass(slots=True, frozen=True)
 class SceneClipExtractedEvent:
+    clip_index: int
     scene_id: UUID
     scene_position: int
     clip_mode: SceneClipMode
@@ -68,6 +71,7 @@ class SceneClipExtractedEvent:
 
 @dataclass(slots=True, frozen=True)
 class SceneClipUploadedEvent:
+    clip_index: int
     scene_id: UUID
     scene_position: int
     clip_mode: SceneClipMode
@@ -76,6 +80,7 @@ class SceneClipUploadedEvent:
 
 @dataclass(slots=True, frozen=True)
 class SceneMaterializedEvent:
+    clip_index: int
     scene_id: UUID
     scene_position: int
     transcript: dict
@@ -449,17 +454,23 @@ class PipelineService:
         keyframe_times: list[float],
     ) -> list[SceneMaterializationPlan]:
         plans: list[SceneMaterializationPlan] = []
-        for scene in scenes:
+        seen_positions: set[int] = set()
+        for clip_index, scene in enumerate(scenes):
+            scene_position = int(scene.position)
+            if scene_position in seen_positions:
+                raise RuntimeError(f"Duplicate scene position detected: {scene_position}")
+            seen_positions.add(scene_position)
             mode: SceneClipMode = (
                 "copy" if self._is_keyframe_aligned(float(scene.start), keyframe_times) else "reencode"
             )
             plans.append(
                 SceneMaterializationPlan(
+                    clip_index=clip_index,
                     scene_id=scene.id,
-                    scene_position=int(scene.position),
+                    scene_position=scene_position,
                     scene_start_sec=float(scene.start),
                     scene_end_sec=float(scene.end),
-                    clip_path=clips_dir / f"{int(scene.position):06d}.mp4",
+                    clip_path=self._clip_path_for_index(clips_dir, clip_index),
                     clip_mode=mode,
                     scene_prefix=f"movies/{movie_id}/scenes/{scene.id}",
                 )
@@ -482,6 +493,7 @@ class PipelineService:
 
         logger.info(
             "scene materialization started",
+            clip_index=plan.clip_index,
             scene_id=str(plan.scene_id),
             scene_position=plan.scene_position,
             clip_mode=plan.clip_mode,
@@ -496,8 +508,14 @@ class PipelineService:
                 clip_path=str(plan.clip_path),
                 mode=plan.clip_mode,
             )
+        actual_clip_index = self._clip_index_from_path(clip_path)
+        if actual_clip_index != plan.clip_index:
+            raise RuntimeError(
+                f"Clip index mismatch: expected {plan.clip_index}, got {actual_clip_index} ({clip_path.name})"
+            )
         await persist_queue.put(
             SceneClipExtractedEvent(
+                clip_index=plan.clip_index,
                 scene_id=plan.scene_id,
                 scene_position=plan.scene_position,
                 clip_mode=plan.clip_mode,
@@ -509,6 +527,7 @@ class PipelineService:
             await self.storage.upload_file(scene_video_key, str(clip_path), "video/mp4")
             logger.info(
                 "scene video uploaded",
+                clip_index=plan.clip_index,
                 scene_id=str(plan.scene_id),
                 scene_position=plan.scene_position,
                 clip_mode=plan.clip_mode,
@@ -516,6 +535,7 @@ class PipelineService:
             )
             await persist_queue.put(
                 SceneClipUploadedEvent(
+                    clip_index=plan.clip_index,
                     scene_id=plan.scene_id,
                     scene_position=plan.scene_position,
                     clip_mode=plan.clip_mode,
@@ -523,16 +543,31 @@ class PipelineService:
                 )
             )
 
-            async with keyframes_semaphore:
-                keyframes = await self.sbe.extract_clip_keyframes(
-                    str(clip_path),
-                    max_keyframes=KEYFRAMES_PER_SCENE,
-                    min_gap_sec=KEYFRAMES_MIN_GAP_SEC,
-                    min_score_percentile=KEYFRAMES_MIN_SCORE_PERCENTILE,
+            try:
+                async with keyframes_semaphore:
+                    keyframes = await asyncio.wait_for(
+                        self.sbe.extract_clip_keyframes(
+                            str(clip_path),
+                            max_keyframes=KEYFRAMES_PER_SCENE,
+                            min_gap_sec=KEYFRAMES_MIN_GAP_SEC,
+                            min_score_percentile=KEYFRAMES_MIN_SCORE_PERCENTILE,
+                        ),
+                        timeout=KEYFRAMES_EXTRACTION_TIMEOUT_SEC,
+                    )
+            except TimeoutError:
+                logger.warning(
+                    "scene keyframes extraction timeout",
+                    clip_index=plan.clip_index,
+                    scene_id=str(plan.scene_id),
+                    scene_position=plan.scene_position,
+                    clip_mode=plan.clip_mode,
+                    timeout_sec=KEYFRAMES_EXTRACTION_TIMEOUT_SEC,
                 )
+                keyframes = []
 
             logger.info(
                 "scene keyframes extracted",
+                clip_index=plan.clip_index,
                 scene_id=str(plan.scene_id),
                 scene_position=plan.scene_position,
                 clip_mode=plan.clip_mode,
@@ -551,6 +586,7 @@ class PipelineService:
             )
             await persist_queue.put(
                 SceneMaterializedEvent(
+                    clip_index=plan.clip_index,
                     scene_id=plan.scene_id,
                     scene_position=plan.scene_position,
                     transcript=scene_transcript.model_dump(mode="json"),
@@ -559,6 +595,7 @@ class PipelineService:
             )
             logger.info(
                 "scene materialization finished",
+                clip_index=plan.clip_index,
                 scene_id=str(plan.scene_id),
                 scene_position=plan.scene_position,
                 clip_mode=plan.clip_mode,
@@ -578,8 +615,22 @@ class PipelineService:
         clipped_persisted = 0
         uploaded_persisted = 0
         materialized_persisted = 0
+        seen_clipped: set[int] = set()
+        seen_uploaded: set[int] = set()
+        seen_materialized: set[int] = set()
         while True:
             if workers_done.is_set() and persist_queue.empty():
+                if (
+                    clipped_persisted != total_scenes
+                    or uploaded_persisted != total_scenes
+                    or materialized_persisted != total_scenes
+                ):
+                    raise RuntimeError(
+                        "SBE persistence counters mismatch: "
+                        f"clipped={clipped_persisted}/{total_scenes}, "
+                        f"uploaded={uploaded_persisted}/{total_scenes}, "
+                        f"materialized={materialized_persisted}/{total_scenes}"
+                    )
                 logger.info(
                     "materialize_scenes persistence finished",
                     task_id=str(task_id),
@@ -597,7 +648,10 @@ class PipelineService:
 
             try:
                 if isinstance(event, SceneClipExtractedEvent):
+                    if event.clip_index in seen_clipped:
+                        raise RuntimeError(f"Duplicate clip extracted event for index {event.clip_index}")
                     await self._persist_scene_clip_extracted(task_id, event)
+                    seen_clipped.add(event.clip_index)
                     clipped_persisted += 1
                     logger.info(
                         "materialize_scenes progress",
@@ -606,13 +660,17 @@ class PipelineService:
                         clipped_progress=f"{clipped_persisted}/{total_scenes}",
                         uploaded_progress=f"{uploaded_persisted}/{total_scenes}",
                         materialized_progress=f"{materialized_persisted}/{total_scenes}",
+                        clip_index=event.clip_index,
                         scene_id=str(event.scene_id),
                         scene_position=event.scene_position,
                         clip_mode=event.clip_mode,
                         queue_size=persist_queue.qsize(),
                     )
                 elif isinstance(event, SceneClipUploadedEvent):
+                    if event.clip_index in seen_uploaded:
+                        raise RuntimeError(f"Duplicate clip uploaded event for index {event.clip_index}")
                     await self._persist_scene_video_upload(task_id, event)
+                    seen_uploaded.add(event.clip_index)
                     uploaded_persisted += 1
                     logger.info(
                         "materialize_scenes progress",
@@ -621,13 +679,17 @@ class PipelineService:
                         clipped_progress=f"{clipped_persisted}/{total_scenes}",
                         uploaded_progress=f"{uploaded_persisted}/{total_scenes}",
                         materialized_progress=f"{materialized_persisted}/{total_scenes}",
+                        clip_index=event.clip_index,
                         scene_id=str(event.scene_id),
                         scene_position=event.scene_position,
                         clip_mode=event.clip_mode,
                         queue_size=persist_queue.qsize(),
                     )
                 else:
+                    if event.clip_index in seen_materialized:
+                        raise RuntimeError(f"Duplicate scene materialized event for index {event.clip_index}")
                     await self._persist_scene_materialization(task_id, event)
+                    seen_materialized.add(event.clip_index)
                     materialized_persisted += 1
                     logger.info(
                         "materialize_scenes progress",
@@ -636,6 +698,7 @@ class PipelineService:
                         clipped_progress=f"{clipped_persisted}/{total_scenes}",
                         uploaded_progress=f"{uploaded_persisted}/{total_scenes}",
                         materialized_progress=f"{materialized_persisted}/{total_scenes}",
+                        clip_index=event.clip_index,
                         scene_id=str(event.scene_id),
                         scene_position=event.scene_position,
                         queue_size=persist_queue.qsize(),
@@ -651,6 +714,7 @@ class PipelineService:
         await self.session.commit()
         logger.info(
             "scene clip extracted persisted",
+            clip_index=event.clip_index,
             scene_id=str(event.scene_id),
             scene_position=event.scene_position,
             clip_mode=event.clip_mode,
@@ -663,6 +727,7 @@ class PipelineService:
         await self.session.commit()
         logger.info(
             "scene video persisted",
+            clip_index=event.clip_index,
             scene_id=str(event.scene_id),
             scene_position=event.scene_position,
             clip_mode=event.clip_mode,
@@ -686,6 +751,7 @@ class PipelineService:
         await self.session.commit()
         logger.info(
             "scene materialization persisted",
+            clip_index=event.clip_index,
             scene_id=str(event.scene_id),
             scene_position=event.scene_position,
             frames=len(event.frame_rows),
@@ -708,6 +774,21 @@ class PipelineService:
         if scene is None:
             raise LookupError("Scene not found")
         return scene
+
+    @staticmethod
+    def _clip_path_for_index(clips_dir: Path, clip_index: int) -> Path:
+        return clips_dir / f"clip_{clip_index:06d}.mp4"
+
+    @staticmethod
+    def _clip_index_from_path(clip_path: Path) -> int:
+        stem = clip_path.stem
+        prefix = "clip_"
+        if not stem.startswith(prefix):
+            raise RuntimeError(f"Unexpected clip filename format: {clip_path.name}")
+        index_str = stem[len(prefix) :]
+        if not index_str.isdigit():
+            raise RuntimeError(f"Invalid clip index in filename: {clip_path.name}")
+        return int(index_str)
 
     @staticmethod
     def _is_keyframe_aligned(scene_start: float, keyframe_times: list[float]) -> bool:

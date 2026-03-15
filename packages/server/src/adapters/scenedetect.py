@@ -90,6 +90,9 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
         clip_path: str,
         mode: SceneClipMode,
     ) -> Path:
+        source = Path(video_path)
+        if not source.exists():
+            raise RuntimeError(f"video_path does not exist: {video_path}")
         if start_sec < 0:
             raise RuntimeError("start_sec must be non-negative")
         if end_sec <= start_sec:
@@ -187,6 +190,10 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
                 elapsed_ms=round((time.perf_counter() - started_at) * 1000),
             )
             raise RuntimeError(error)
+        if not output.exists():
+            raise RuntimeError(f"ffmpeg clip not found after extraction: {output}")
+        if output.stat().st_size <= 0:
+            raise RuntimeError(f"ffmpeg produced empty clip: {output}")
 
         logger.info(
             "sbe.clip_extract.finished",
