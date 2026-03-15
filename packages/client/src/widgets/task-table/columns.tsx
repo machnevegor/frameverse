@@ -29,8 +29,9 @@ export const taskColumns: ColumnDef<Task>[] = [
     cell: ({ row }) => (
       <Link
         className="font-medium underline-offset-4 hover:underline"
-        params={{ taskId: row.original.id }}
-        to="/dashboard/tasks/$taskId"
+        onClick={(e) => e.stopPropagation()}
+        params={{ movieId: row.original.movie_id }}
+        to="/movies/$movieId"
       >
         {row.original.movie_title}
       </Link>
@@ -66,7 +67,11 @@ export const taskColumns: ColumnDef<Task>[] = [
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon-sm" variant="ghost">
+              <Button
+                onClick={(e) => e.stopPropagation()}
+                size="icon-sm"
+                variant="ghost"
+              >
                 <MoreHorizontal className="size-4" />
                 <span className="sr-only">Действия</span>
               </Button>
@@ -78,15 +83,18 @@ export const taskColumns: ColumnDef<Task>[] = [
                   params={{ taskId: task.id }}
                   to="/dashboard/tasks/$taskId"
                 >
-                  Детали задачи
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link params={{ movieId: task.movie_id }} to="/movies/$movieId">
-                  Страница фильма
+                  Открыть
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              <DropdownMenuLabel>Фильм</DropdownMenuLabel>
+              <DropdownMenuItem asChild>
+                <Link params={{ movieId: task.movie_id }} to="/movies/$movieId">
+                  Открыть
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Ссылки</DropdownMenuLabel>
               <DropdownMenuItem asChild>
                 <a
                   className="flex items-center gap-2"
@@ -95,7 +103,7 @@ export const taskColumns: ColumnDef<Task>[] = [
                   target="_blank"
                 >
                   <ExternalLink className="size-3.5" />
-                  Temporal Workflow
+                  Temporal
                 </a>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -106,7 +114,7 @@ export const taskColumns: ColumnDef<Task>[] = [
                   target="_blank"
                 >
                   <ExternalLink className="size-3.5" />
-                  Langfuse Trace
+                  Langfuse
                 </a>
               </DropdownMenuItem>
             </DropdownMenuContent>

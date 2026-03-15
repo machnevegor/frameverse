@@ -8,6 +8,13 @@ import {
 } from "@tanstack/react-table";
 import { parseAsInteger, useQueryState } from "nuqs";
 import { Button } from "#/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "#/components/ui/select";
 import { Skeleton } from "#/components/ui/skeleton";
 import {
   Table,
@@ -20,14 +27,30 @@ import {
 import { moviesQueryOptions } from "#/entities/movie/api";
 import { movieColumns } from "./columns";
 
-const PER_PAGE = 20;
+const DEFAULT_PAGE = 1;
+const DEFAULT_PER_PAGE = 20;
+const PER_PAGE_OPTIONS = [10, 20, 50];
 
 export function MovieTable() {
-  const [page, setPage] = useQueryState(
-    "moviePage",
-    parseAsInteger.withDefault(1),
-  );
-  const { data, isLoading } = useQuery(moviesQueryOptions(page, PER_PAGE));
+  const [pageParam, setPage] = useQueryState("page", parseAsInteger);
+  const [perPageParam, setPerPage] = useQueryState("per_page", parseAsInteger);
+  const page = pageParam && pageParam > 0 ? pageParam : DEFAULT_PAGE;
+  const perPage =
+    perPageParam && PER_PAGE_OPTIONS.includes(perPageParam)
+      ? perPageParam
+      : DEFAULT_PER_PAGE;
+
+  const { data, isLoading } = useQuery(moviesQueryOptions(page, perPage));
+
+  function setPagination(nextPage: number, nextPerPage: number) {
+    if (nextPage <= DEFAULT_PAGE) {
+      void setPage(null);
+      void setPerPage(null);
+      return;
+    }
+    void setPage(nextPage);
+    void setPerPage(nextPerPage);
+  }
 
   const table = useReactTable({
     data: data?.data ?? [],
@@ -99,13 +122,33 @@ export function MovieTable() {
 
       {data && data.pagination.total_pages > 1 && (
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">
-            Страница {data.pagination.page} из {data.pagination.total_pages}
-          </span>
-          <div className="flex gap-1">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">На странице</span>
+            <Select
+              onValueChange={(v) => {
+                setPagination(DEFAULT_PAGE, Number(v));
+              }}
+              value={String(perPage)}
+            >
+              <SelectTrigger className="h-8 w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="end">
+                {PER_PAGE_OPTIONS.map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-muted-foreground">
+              Страница {data.pagination.page} из {data.pagination.total_pages}
+            </span>
             <Button
               disabled={page <= 1}
-              onClick={() => void setPage(page - 1)}
+              onClick={() => setPagination(page - 1, perPage)}
               size="sm"
               variant="outline"
             >
@@ -113,7 +156,7 @@ export function MovieTable() {
             </Button>
             <Button
               disabled={!data.pagination.has_next}
-              onClick={() => void setPage(page + 1)}
+              onClick={() => setPagination(page + 1, perPage)}
               size="sm"
               variant="outline"
             >

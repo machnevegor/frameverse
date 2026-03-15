@@ -59,42 +59,60 @@ export function TaskProgressCompact({ progress }: TaskProgressCompactProps) {
   return (
     <HoverCard openDelay={120}>
       <HoverCardTrigger asChild>
-        <div className="flex cursor-default items-center gap-2">
-          <Progress className="h-1.5 w-20" value={pct} />
-          <span className="text-muted-foreground text-xs tabular-nums">
+        <div className="flex cursor-default items-center gap-2 rounded-md border border-border/60 bg-background/60 px-2 py-1">
+          <Progress className="h-1.5 w-24" value={pct} />
+          <span className="text-[11px] text-muted-foreground tabular-nums">
             {pct}%
           </span>
         </div>
       </HoverCardTrigger>
       <HoverCardContent
         align="start"
-        className="w-64 space-y-2 border-border/60 bg-popover/85 p-3 shadow-xl backdrop-blur-md"
+        className="w-80 border-border/60 bg-popover/90 p-0 shadow-xl backdrop-blur-md"
         side="top"
       >
-        {rows.map((row) => (
-          <div
-            className="flex items-center justify-between gap-4"
-            key={row.label}
-          >
-            <span className="text-xs opacity-70">{row.label}</span>
-            <div className="flex items-center gap-1.5">
-              <div className="h-1 w-16 overflow-hidden rounded-full bg-primary/15">
-                <div
-                  className="h-full rounded-full bg-primary/80"
-                  style={{
-                    width: `${total > 0 ? Math.round((row.value / total) * 100) : 0}%`,
-                  }}
-                />
-              </div>
-              <span className="w-6 text-right text-xs tabular-nums">
-                {row.value}
-              </span>
+        <div className="space-y-3 p-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-xs uppercase tracking-wide">
+                Прогресс
+              </p>
+              <p className="text-muted-foreground text-xs">
+                Обработка сцен фильма
+              </p>
+            </div>
+            <div className="rounded-md bg-primary/10 px-2 py-1 font-semibold text-primary text-xs tabular-nums">
+              {done}/{total}
             </div>
           </div>
-        ))}
-        <hr className="border-border/70" />
-        <div className="pt-0.5 text-center text-xs tabular-nums opacity-60">
-          {total} сцен всего
+          <Progress className="h-2" value={pct} />
+          <div className="space-y-2">
+            {rows.map((row) => (
+              <div
+                className="flex items-center justify-between gap-4"
+                key={row.label}
+              >
+                <span className="text-xs opacity-80">{row.label}</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="h-1.5 w-20 overflow-hidden rounded-full bg-primary/15">
+                    <div
+                      className="h-full rounded-full bg-primary/80"
+                      style={{
+                        width: `${total > 0 ? Math.round((row.value / total) * 100) : 0}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="w-7 text-right text-xs tabular-nums">
+                    {row.value}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center justify-between border-border/60 border-t bg-muted/20 px-3 py-2">
+          <span className="text-muted-foreground text-xs">Готовность</span>
+          <span className="font-medium text-xs tabular-nums">{pct}%</span>
         </div>
       </HoverCardContent>
     </HoverCard>
