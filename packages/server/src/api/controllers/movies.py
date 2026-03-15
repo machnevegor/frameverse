@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from uuid import UUID
 
-from litestar import delete, get
+from litestar import delete, get, head
 from litestar.exceptions import NotFoundException
 from litestar.response import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -122,13 +122,8 @@ async def delete_movie(session: AsyncSession, temporal_client: Client, movie_id:
     return Response(content=None, status_code=204)
 
 
-@get(
-    f"{settings.base_path}/movies/{{movie_id:uuid}}/video",
-    tags=["Movie"],
-    summary="Get movie video",
-    description="Redirect to a presigned URL for movie video file.",
-)
-async def stream_movie_video(session: AsyncSession, movie_id: UUID) -> Response[None]:
+async def _movie_video_response(movie_id: UUID, session: AsyncSession) -> Response[None]:
+    """Shared logic for GET/HEAD movie video: 302 to presigned URL or 404."""
     movie_service = MovieService(session)
     storage = get_storage()
     movie = await movie_service.get(movie_id)
@@ -136,6 +131,26 @@ async def stream_movie_video(session: AsyncSession, movie_id: UUID) -> Response[
         raise NotFoundException(MOVIE_VIDEO_ERROR[404])
     presigned_url = await storage.generate_presigned_get_url(movie.video_s3_key, expires_in=PRESIGNED_URL_TTL_SEC)
     return Response(content=None, status_code=302, headers={"Location": presigned_url})
+
+
+@get(
+    f"{settings.base_path}/movies/{{movie_id:uuid}}/video",
+    tags=["Movie"],
+    summary="Get movie video",
+    description="Redirect to a presigned URL for movie video file.",
+)
+async def stream_movie_video(session: AsyncSession, movie_id: UUID) -> Response[None]:
+    return await _movie_video_response(movie_id, session)
+
+
+@head(
+    f"{settings.base_path}/movies/{{movie_id:uuid}}/video",
+    tags=["Movie"],
+    summary="Head movie video",
+    description="Same as GET but without body; used by clients to check availability.",
+)
+async def head_movie_video(session: AsyncSession, movie_id: UUID) -> Response[None]:
+    return await _movie_video_response(movie_id, session)
 
 
 @get(

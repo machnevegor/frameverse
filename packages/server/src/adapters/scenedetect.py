@@ -160,6 +160,23 @@ async def _stream_clips(
     output_path.mkdir(parents=True, exist_ok=True)
     expected = len(split_times)
 
+    # Re-encode so each segment starts with an I-frame (avoids black screen when
+    # cutting at non-keyframe positions). -c copy would produce broken first frames.
+    force_keyframes = ",".join(f"{t:.6f}" for t in split_times)
+    video_encode = [
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "23",
+        "-pix_fmt",
+        "yuv420p",
+        "-force_key_frames",
+        force_keyframes,
+    ]
+    audio_encode = ["-c:a", "aac"]
+
     if len(split_times) == 1:
         cmd = [
             "ffmpeg",
@@ -174,8 +191,8 @@ async def _stream_clips(
             source,
             "-map",
             "0",
-            "-c",
-            "copy",
+            *video_encode,
+            *audio_encode,
             str(output_path / "part_000000.mp4"),
         ]
     else:
@@ -193,8 +210,8 @@ async def _stream_clips(
             source,
             "-map",
             "0",
-            "-c",
-            "copy",
+            *video_encode,
+            *audio_encode,
             "-f",
             "segment",
             "-reset_timestamps",

@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 import structlog
-from litestar import get, post
+from litestar import get, head, post
 from litestar.exceptions import ClientException, NotFoundException
 from litestar.response import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -94,13 +94,8 @@ async def read_scene(session: AsyncSession, scene_id: UUID) -> ReadSceneResult:
     return ReadSceneResult(data=to_scene(scene))
 
 
-@get(
-    f"{settings.base_path}/scenes/{{scene_id:uuid}}/video",
-    tags=["Scene"],
-    summary="Get scene video",
-    description="Redirect to a presigned URL for scene video clip.",
-)
-async def stream_scene_video(session: AsyncSession, scene_id: UUID) -> Response[None]:
+async def _scene_video_response(scene_id: UUID, session: AsyncSession) -> Response[None]:
+    """Shared logic for GET/HEAD scene video: 302 to presigned URL or 404."""
     scene_service = SceneService(session)
     storage = get_storage()
     scene = await scene_service.get(scene_id)
@@ -108,6 +103,26 @@ async def stream_scene_video(session: AsyncSession, scene_id: UUID) -> Response[
         raise NotFoundException(SCENE_VIDEO_ERROR[404])
     presigned_url = await storage.generate_presigned_get_url(scene.video_s3_key, expires_in=PRESIGNED_URL_TTL_SEC)
     return Response(content=None, status_code=302, headers={"Location": presigned_url})
+
+
+@get(
+    f"{settings.base_path}/scenes/{{scene_id:uuid}}/video",
+    tags=["Scene"],
+    summary="Get scene video",
+    description="Redirect to a presigned URL for scene video clip.",
+)
+async def stream_scene_video(session: AsyncSession, scene_id: UUID) -> Response[None]:
+    return await _scene_video_response(scene_id, session)
+
+
+@head(
+    f"{settings.base_path}/scenes/{{scene_id:uuid}}/video",
+    tags=["Scene"],
+    summary="Head scene video",
+    description="Same as GET but without body; used by clients to check availability.",
+)
+async def head_scene_video(session: AsyncSession, scene_id: UUID) -> Response[None]:
+    return await _scene_video_response(scene_id, session)
 
 
 @get(
