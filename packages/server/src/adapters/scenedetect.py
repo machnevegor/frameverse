@@ -89,7 +89,6 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
         end_sec: float,
         clip_path: str,
         mode: SceneClipMode,
-        nearest_keyframe_sec: float | None = None,
     ) -> Path:
         source = Path(video_path)
         if not source.exists():
@@ -104,25 +103,25 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
         duration = end_sec - start_sec
         started_at = time.perf_counter()
 
+        common = [
+            "ffmpeg",
+            "-hide_banner",
+            "-nostdin",
+            "-loglevel",
+            "error",
+            "-y",
+            "-ss",
+            f"{start_sec:.6f}",
+            "-i",
+            video_path,
+            "-t",
+            f"{duration:.6f}",
+            "-map",
+            "0",
+        ]
         if mode == "copy":
-            # Input seeking is fast and sufficient for copy: we only use copy when
-            # start_sec is already on a keyframe boundary (verified by _is_keyframe_aligned),
-            # so the clip starts at the correct I-frame with no black-screen risk.
             cmd = [
-                "ffmpeg",
-                "-hide_banner",
-                "-nostdin",
-                "-loglevel",
-                "error",
-                "-y",
-                "-ss",
-                f"{start_sec:.6f}",
-                "-i",
-                video_path,
-                "-t",
-                f"{duration:.6f}",
-                "-map",
-                "0",
+                *common,
                 "-c",
                 "copy",
                 "-movflags",
@@ -130,36 +129,8 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
                 str(output),
             ]
         else:
-            # For re-encode we need frame-accurate positioning.  The trick is to
-            # combine a fast input seek to the nearest preceding keyframe with a
-            # short output seek that advances the decoder to the exact start_sec.
-            # This avoids decoding from the very beginning of the file (slow for
-            # long movies) while still producing a clip whose first frame is
-            # exactly at start_sec.
-            if nearest_keyframe_sec is not None and nearest_keyframe_sec <= start_sec:
-                input_seek = nearest_keyframe_sec
-                output_seek = start_sec - nearest_keyframe_sec
-            else:
-                # Fallback: output-only seek — accurate but slower for large files.
-                input_seek = start_sec
-                output_seek = 0.0
             cmd = [
-                "ffmpeg",
-                "-hide_banner",
-                "-nostdin",
-                "-loglevel",
-                "error",
-                "-y",
-                "-ss",
-                f"{input_seek:.6f}",
-                "-i",
-                video_path,
-                "-ss",
-                f"{output_seek:.6f}",
-                "-t",
-                f"{duration:.6f}",
-                "-map",
-                "0",
+                *common,
                 "-c:v",
                 "libx264",
                 "-preset",
