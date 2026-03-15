@@ -14,7 +14,7 @@ function DashboardLayout() {
   const isUpload = matchRoute({ to: "/dashboard/upload" });
 
   return (
-    <div className="page-wrap px-4 py-8">
+    <div className="page-wrap py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="font-semibold text-2xl">Дашборд</h1>
         <nav className="flex items-center gap-2">

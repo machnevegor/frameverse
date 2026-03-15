@@ -76,7 +76,7 @@ interface FrameThumbProps {
 function FrameThumb({ imageUrl }: FrameThumbProps) {
   if (!imageUrl) {
     return (
-      <div className="flex size-14 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+      <div className="flex h-16 w-28 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
         <Image className="size-4" />
       </div>
     );
@@ -85,7 +85,7 @@ function FrameThumb({ imageUrl }: FrameThumbProps) {
   return (
     <img
       alt=""
-      className="size-14 shrink-0 rounded object-cover"
+      className="h-16 w-28 shrink-0 rounded object-cover"
       loading="lazy"
       onError={(e) => {
         (e.currentTarget as HTMLImageElement).style.display = "none";
@@ -99,7 +99,7 @@ export function SceneCardSkeleton() {
   return (
     <div className="rounded-xl border p-3">
       <div className="flex gap-3">
-        <Skeleton className="size-14 shrink-0 rounded" />
+        <Skeleton className="h-16 w-28 shrink-0 rounded" />
         <div className="flex-1 space-y-2">
           <Skeleton className="h-4 w-24" />
           <Skeleton className="h-3 w-full" />

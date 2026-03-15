@@ -123,7 +123,7 @@ interface PosterThumbProps {
 
 const POSTER_SIZES = {
   sm: "h-14 w-10",
-  md: "h-28 w-20",
+  md: "h-36 w-24",
   lg: "h-72 w-48 sm:h-80 sm:w-56",
 };
 

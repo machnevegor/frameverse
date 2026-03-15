@@ -1,6 +1,7 @@
 import type { MovieStatus, SceneStatus } from "../api/types";
 
-export const API_BASE = "/api/v0";
+export const API_BASE =
+  typeof window === "undefined" ? "https://frameverse.ru/api/v0" : "/api/v0";
 
 export const SEARCH_SCENES_LIMIT = 30;
 export const SEARCH_SCENES_PER_MOVIE = 3;

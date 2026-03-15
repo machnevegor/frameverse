@@ -103,7 +103,10 @@ export function ScenePlayer({
           onEnded={() => setPlaying(false)}
           onLoadedMetadata={handleLoadedMetadata}
           onPause={() => setPlaying(false)}
-          onPlay={() => { setPlaying(true); setBuffering(false); }}
+          onPlay={() => {
+            setPlaying(true);
+            setBuffering(false);
+          }}
           onTimeUpdate={handleTimeUpdate}
           onWaiting={handleWaiting}
           playsInline

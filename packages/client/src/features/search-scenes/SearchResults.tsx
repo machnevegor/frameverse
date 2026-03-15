@@ -4,11 +4,7 @@ import { SearchX } from "lucide-react";
 import { motion } from "motion/react";
 import { parseAsString, useQueryState } from "nuqs";
 import { Badge } from "#/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "#/components/ui/card";
+import { Card, CardContent, CardHeader } from "#/components/ui/card";
 import { Separator } from "#/components/ui/separator";
 import { movieQueryOptions } from "#/entities/movie/api";
 import { PosterThumb } from "#/entities/movie/MovieCard";

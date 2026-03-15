@@ -129,6 +129,10 @@
   .content-container {
     @apply mx-auto w-full max-w-5xl px-4;
   }
+
+  .page-wrap {
+    @apply mx-auto w-full max-w-5xl px-4;
+  }
 }
 
 @keyframes shiny-sweep {

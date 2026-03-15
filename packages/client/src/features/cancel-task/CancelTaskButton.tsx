@@ -44,7 +44,11 @@ export function CancelTaskButton({ taskId, status }: CancelTaskButtonProps) {
   return (
     <AlertDialog onOpenChange={setOpen} open={open}>
       <AlertDialogTrigger asChild>
-        <Button size="sm" variant="outline">
+        <Button
+          className="hover:border-destructive/50 hover:bg-destructive/10 hover:text-destructive"
+          size="sm"
+          variant="outline"
+        >
           Отменить задачу
         </Button>
       </AlertDialogTrigger>
@@ -58,6 +62,7 @@ export function CancelTaskButton({ taskId, status }: CancelTaskButtonProps) {
         <AlertDialogFooter>
           <AlertDialogCancel>Назад</AlertDialogCancel>
           <AlertDialogAction
+            className="bg-destructive text-white hover:bg-destructive/90"
             disabled={mutation.isPending}
             onClick={() => mutation.mutate()}
           >

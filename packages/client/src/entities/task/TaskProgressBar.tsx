@@ -79,25 +79,30 @@ export function TaskProgressCompact({ progress }: TaskProgressCompactProps) {
           </span>
         </div>
       </TooltipTrigger>
-      <TooltipContent className="w-48 space-y-2 p-3" side="top">
+      <TooltipContent className="w-52 space-y-2 p-3" side="top">
         {rows.map((row) => (
           <div
             className="flex items-center justify-between gap-4"
             key={row.label}
           >
-            <span className="text-muted-foreground text-xs">{row.label}</span>
+            <span className="text-xs opacity-70">{row.label}</span>
             <div className="flex items-center gap-1.5">
-              <Progress
-                className="h-1 w-16"
-                value={total > 0 ? Math.round((row.value / total) * 100) : 0}
-              />
+              <div className="h-1 w-16 overflow-hidden rounded-full bg-background/20">
+                <div
+                  className="h-full rounded-full bg-background/80"
+                  style={{
+                    width: `${total > 0 ? Math.round((row.value / total) * 100) : 0}%`,
+                  }}
+                />
+              </div>
               <span className="w-6 text-right text-xs tabular-nums">
                 {row.value}
               </span>
             </div>
           </div>
         ))}
-        <div className="border-t pt-1.5 text-center text-muted-foreground text-xs tabular-nums">
+        <hr className="border-background/20" />
+        <div className="pt-0.5 text-center text-xs tabular-nums opacity-60">
           {total} сцен всего
         </div>
       </TooltipContent>

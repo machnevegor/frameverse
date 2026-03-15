@@ -7,9 +7,9 @@ export const Route = createFileRoute("/dashboard/upload")({
 
 function DashboardUploadPage() {
   return (
-    <div className="mx-auto max-w-2xl">
+    <div>
       <div className="mb-6">
-        <h2 className="font-semibold text-xl">Загрузить фильм</h2>
+        <h2 className="font-semibold text-lg">Загрузить фильм</h2>
         <p className="mt-1 text-muted-foreground text-sm">
           Загрузите видеофайл — система обработает его и индексирует сцены для
           семантического поиска

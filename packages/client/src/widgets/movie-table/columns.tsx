@@ -119,7 +119,7 @@ export const movieColumns: ColumnDef<Movie>[] = [
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              className="p-0"
+              className="p-0 text-destructive focus:bg-destructive/10 focus:text-destructive"
               onSelect={(e) => e.preventDefault()}
             >
               <DeleteMovieDialog
@@ -127,7 +127,7 @@ export const movieColumns: ColumnDef<Movie>[] = [
                 movieTitle={movie.title}
                 trigger={
                   <button
-                    className="w-full px-2 py-1.5 text-left text-destructive text-sm"
+                    className="w-full px-2 py-1.5 text-left text-sm"
                     type="button"
                   >
                     Удалить
