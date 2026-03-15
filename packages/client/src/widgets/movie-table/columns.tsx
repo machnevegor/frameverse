@@ -107,40 +107,49 @@ export const movieColumns: ColumnDef<Movie>[] = [
 
 function MovieActions({ movie }: { movie: Movie }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  function openDelete() {
+    setDropdownOpen(false);
+    setDeleteOpen(true);
+  }
 
   return (
-    <DropdownMenu onOpenChange={setDropdownOpen} open={dropdownOpen}>
-      <DropdownMenuTrigger asChild>
-        <Button size="icon-sm" variant="ghost">
-          <MoreHorizontal className="size-4" />
-          <span className="sr-only">Действия</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Фильм</DropdownMenuLabel>
-        <DropdownMenuItem asChild>
-          <Link params={{ movieId: movie.id }} to="/movies/$movieId">
-            Открыть
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DeleteMovieDialog
-          movieId={movie.id}
-          movieTitle={movie.title}
-          onSuccess={() => setDropdownOpen(false)}
-          trigger={
-            <DropdownMenuItem
-              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-              onSelect={(e) => {
-                e.preventDefault();
-                setDropdownOpen(false);
-              }}
-            >
-              Удалить
-            </DropdownMenuItem>
-          }
-        />
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu onOpenChange={setDropdownOpen} open={dropdownOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button size="icon-sm" variant="ghost">
+            <MoreHorizontal className="size-4" />
+            <span className="sr-only">Действия</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Фильм</DropdownMenuLabel>
+          <DropdownMenuItem asChild>
+            <Link params={{ movieId: movie.id }} to="/movies/$movieId">
+              Открыть
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+            onSelect={(e) => {
+              e.preventDefault();
+              openDelete();
+            }}
+          >
+            Удалить
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DeleteMovieDialog
+        movieId={movie.id}
+        movieTitle={movie.title}
+        onOpenChange={setDeleteOpen}
+        onSuccess={() => setDropdownOpen(false)}
+        open={deleteOpen}
+      />
+    </>
   );
 }
