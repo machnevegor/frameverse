@@ -20,6 +20,7 @@ export default function Header() {
         <div className="flex items-center">
           <Link
             className="inline-flex items-center rounded-full border border-border bg-background px-3 py-1.5 font-medium text-foreground text-sm no-underline shadow-[0_8px_22px_rgba(0,0,0,0.04)] transition hover:border-foreground/25"
+            search={(prev) => ({ ...prev, q: undefined })}
             to="/"
           >
             фрейм вёрс
