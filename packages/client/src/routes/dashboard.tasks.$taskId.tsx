@@ -13,10 +13,10 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "#/components/ui/card";
-import { Separator } from "#/components/ui/separator";
 import { Skeleton } from "#/components/ui/skeleton";
 import { taskQueryOptions } from "#/entities/task/api";
 import { TaskProgressBar } from "#/entities/task/TaskProgressBar";
@@ -69,8 +69,8 @@ function TaskDetailPage() {
         initial={{ opacity: 0, y: 16 }}
         transition={{ duration: 0.35, ease: "easeOut" }}
       >
-        <Card className="gap-0 overflow-hidden py-0">
-          <CardHeader className="gap-3 border-b bg-muted/20">
+        <Card>
+          <CardHeader className="gap-3">
             <CardTitle className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-xl leading-tight">{task.movie_title}</span>
               <TaskStatusBadge status={task.status} />
@@ -83,7 +83,7 @@ function TaskDetailPage() {
               <span className="text-xs">Task ID: {task.id}</span>
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6 py-6">
+          <CardContent className="space-y-6">
             <div className="flex flex-wrap gap-2">
               <Button asChild variant="outline">
                 <Link params={{ movieId: task.movie_id }} to="/movies/$movieId">
@@ -114,7 +114,7 @@ function TaskDetailPage() {
             </div>
 
             {task.progress && (
-              <div className="space-y-3 rounded-lg border bg-background p-4">
+              <div className="space-y-3 rounded-lg border p-4">
                 <p className="text-muted-foreground text-xs">
                   Прогресс обработки
                 </p>
@@ -140,14 +140,12 @@ function TaskDetailPage() {
                 </div>
               </div>
             )}
-
-            {isNonTerminalStatus(task.status) && (
-              <>
-                <Separator />
-                <CancelTaskButton status={task.status} taskId={task.id} />
-              </>
-            )}
           </CardContent>
+          {isNonTerminalStatus(task.status) && (
+            <CardFooter className="border-t">
+              <CancelTaskButton status={task.status} taskId={task.id} />
+            </CardFooter>
+          )}
         </Card>
       </motion.div>
     </div>

@@ -117,6 +117,7 @@ function TaskActions({ task }: { task: Task }) {
           </DropdownMenuItem>
           {isNonTerminalStatus(task.status) ? (
             <DropdownMenuItem
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
               onSelect={(e) => {
                 e.preventDefault();
                 setMenuOpen(false);

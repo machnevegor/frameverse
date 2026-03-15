@@ -189,6 +189,7 @@ function MovieActions({ movie }: { movie: Movie }) {
               </DropdownMenuItem>
               {isNonTerminalStatus(activeTask.status) ? (
                 <DropdownMenuItem
+                  className="text-destructive focus:bg-destructive/10 focus:text-destructive"
                   onSelect={(e) => {
                     e.preventDefault();
                     setMenuOpen(false);
