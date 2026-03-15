@@ -182,6 +182,7 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
         name: str | None = None,
         metadata: dict[str, str] | None = None,
         temperature: float = 0.3,
+        max_tokens: int | None = None,
     ) -> Any:
         """Chat completion with optional tool calling and Langfuse tracing."""
         return await self._client.chat.completions.create(
@@ -193,6 +194,7 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
             name=name or "chat",
             metadata=metadata or {},
             temperature=temperature,
+            max_tokens=max_tokens,
         )
 
     @staticmethod

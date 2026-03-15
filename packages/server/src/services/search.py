@@ -21,6 +21,7 @@ from src.api.controllers._mappers import to_frame, to_scene
 from src.config import (
     PRESIGNED_URL_TTL_SEC,
     SEARCH_CANDIDATES_PER_CHANNEL,
+    SEARCH_LLM_MAX_TOKENS,
     SEARCH_MAX_LLM_ITERATIONS,
     SEARCH_MAX_MOVIE_GROUPS,
     SEARCH_MAX_SCENES_PER_GROUP,
@@ -94,12 +95,6 @@ def _sse(event: SearchEventType, payload: Any) -> ServerSentEventMessage:
     return ServerSentEventMessage(data=payload.model_dump_json(), event=event.value)
 
 
-def _fmt_time(seconds: float) -> str:
-    """Format seconds as MM:SS for LLM readability."""
-    m, s = divmod(int(seconds), 60)
-    return f"{m:02d}:{s:02d}"
-
-
 def _transcript_text(scene: SceneModel) -> str:
     """Extract scene-segment text from raw transcript JSON."""
     raw = scene.transcript or {}
@@ -164,6 +159,7 @@ class SearchService:
                 langfuse_prompt=prompt_obj if iteration == 1 else None,
                 name="scene-search-rerank",
                 temperature=0.3,
+                max_tokens=SEARCH_LLM_MAX_TOKENS,
             )
             assistant_msg = response.choices[0].message
 
@@ -347,8 +343,6 @@ class SearchService:
                     match_scores[label] = round(max(0.0, min(1.0, 1.0 - dist / 2.0)), 2)
             scenes_data[f"Сцена #{num}"] = {
                 "фильм": movie_label,
-                "позиция в фильме": c.scene.position,
-                "время": f"{_fmt_time(c.scene.start)} – {_fmt_time(c.scene.end)}",
                 "транскрипт": _transcript_text(c.scene),
                 "аннотация": (c.scene.annotation or {}).get("text", "(нет)"),
                 "совпадения": match_scores,
