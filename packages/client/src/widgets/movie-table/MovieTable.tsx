@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import {
   flexRender,
   getCoreRowModel,
@@ -32,6 +33,7 @@ const DEFAULT_PER_PAGE = 20;
 const PER_PAGE_OPTIONS = [10, 20, 50];
 
 export function MovieTable() {
+  const navigate = useNavigate();
   const [pageParam, setPage] = useQueryState("page", parseAsInteger);
   const [perPageParam, setPerPage] = useQueryState("per_page", parseAsInteger);
   const page = pageParam && pageParam > 0 ? pageParam : DEFAULT_PAGE;
@@ -104,7 +106,16 @@ export function MovieTable() {
               </TableRow>
             ) : (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow
+                  className="cursor-pointer"
+                  key={row.id}
+                  onClick={() =>
+                    void navigate({
+                      params: { movieId: row.original.id },
+                      to: "/movies/$movieId",
+                    })
+                  }
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(

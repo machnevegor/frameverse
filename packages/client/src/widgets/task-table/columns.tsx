@@ -1,6 +1,19 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ExternalLink, MoreHorizontal } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "#/components/ui/alert-dialog";
 import { Button } from "#/components/ui/button";
 import {
   DropdownMenu,
@@ -10,9 +23,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "#/components/ui/dropdown-menu";
+import { movieKeys } from "#/entities/movie/api";
+import { taskKeys } from "#/entities/task/api";
 import { TaskProgressCompact } from "#/entities/task/TaskProgressBar";
 import { TaskStatusBadge } from "#/entities/task/TaskStatusBadge";
-import { CancelTaskButton } from "#/features/cancel-task/CancelTaskButton";
+import { DeleteMovieDialog } from "#/features/delete-movie/DeleteMovieDialog";
+import { cancelTask } from "#/shared/api/client";
 import type { Task } from "#/shared/api/types";
 import { isNonTerminalStatus } from "#/shared/api/types";
 import { formatRelativeDate } from "#/shared/lib/format";
@@ -58,69 +74,135 @@ export const taskColumns: ColumnDef<Task>[] = [
   {
     id: "actions",
     header: "",
-    cell: ({ row }) => {
-      const task = row.original;
-      return (
-        <div className="flex items-center justify-end gap-1">
-          {isNonTerminalStatus(task.status) && (
-            <CancelTaskButton status={task.status} taskId={task.id} />
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                onClick={(e) => e.stopPropagation()}
-                size="icon-sm"
-                variant="ghost"
-              >
-                <MoreHorizontal className="size-4" />
-                <span className="sr-only">Действия</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Задача</DropdownMenuLabel>
-              <DropdownMenuItem asChild>
-                <Link
-                  params={{ taskId: task.id }}
-                  to="/dashboard/tasks/$taskId"
-                >
-                  Открыть
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Фильм</DropdownMenuLabel>
-              <DropdownMenuItem asChild>
-                <Link params={{ movieId: task.movie_id }} to="/movies/$movieId">
-                  Открыть
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Ссылки</DropdownMenuLabel>
-              <DropdownMenuItem asChild>
-                <a
-                  className="flex items-center gap-2"
-                  href={task.temporal_workflow_url}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <ExternalLink className="size-3.5" />
-                  Temporal
-                </a>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <a
-                  className="flex items-center gap-2"
-                  href={task.langfuse_trace_url}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <ExternalLink className="size-3.5" />
-                  Langfuse
-                </a>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      );
-    },
+    cell: ({ row }) => <TaskActions task={row.original} />,
   },
 ];
+
+function TaskActions({ task }: { task: Task }) {
+  const queryClient = useQueryClient();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const cancelMutation = useMutation({
+    mutationFn: () => cancelTask(task.id),
+    onSuccess: () => {
+      toast.success("Задача отменена");
+      void queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      void queryClient.invalidateQueries({ queryKey: movieKeys.all });
+      setCancelOpen(false);
+    },
+    onError: () => toast.error("Не удалось отменить задачу"),
+  });
+
+  return (
+    <>
+      <DropdownMenu onOpenChange={setMenuOpen} open={menuOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            onClick={(e) => e.stopPropagation()}
+            size="icon-sm"
+            variant="ghost"
+          >
+            <MoreHorizontal className="size-4" />
+            <span className="sr-only">Действия</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Задача</DropdownMenuLabel>
+          <DropdownMenuItem asChild>
+            <Link params={{ taskId: task.id }} to="/dashboard/tasks/$taskId">
+              Открыть
+            </Link>
+          </DropdownMenuItem>
+          {isNonTerminalStatus(task.status) ? (
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                setMenuOpen(false);
+                setCancelOpen(true);
+              }}
+            >
+              Отменить
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem disabled>Отменить</DropdownMenuItem>
+          )}
+
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Фильм</DropdownMenuLabel>
+          <DropdownMenuItem asChild>
+            <Link params={{ movieId: task.movie_id }} to="/movies/$movieId">
+              Открыть
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+            onSelect={(e) => {
+              e.preventDefault();
+              setMenuOpen(false);
+              setDeleteOpen(true);
+            }}
+          >
+            Удалить
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Ссылки</DropdownMenuLabel>
+          <DropdownMenuItem asChild>
+            <a
+              className="flex items-center gap-2"
+              href={task.temporal_workflow_url}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <ExternalLink className="size-3.5" />
+              Temporal
+            </a>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <a
+              className="flex items-center gap-2"
+              href={task.langfuse_trace_url}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <ExternalLink className="size-3.5" />
+              Langfuse
+            </a>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <AlertDialog onOpenChange={setCancelOpen} open={cancelOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Отменить задачу?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Выполнение текущей задачи будет остановлено без возможности
+              восстановления.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Назад</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={cancelMutation.isPending}
+              onClick={() => cancelMutation.mutate()}
+              variant="destructive"
+            >
+              {cancelMutation.isPending ? "Отмена..." : "Отменить"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <DeleteMovieDialog
+        movieId={task.movie_id}
+        movieTitle={task.movie_title}
+        onOpenChange={setDeleteOpen}
+        onSuccess={() => setMenuOpen(false)}
+        open={deleteOpen}
+      />
+    </>
+  );
+}

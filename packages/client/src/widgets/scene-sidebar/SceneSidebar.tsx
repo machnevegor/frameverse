@@ -43,11 +43,11 @@ export function SceneSidebar({ scenes }: SceneSidebarProps) {
   return (
     <Sheet onOpenChange={(o) => !o && close()} open={isOpen}>
       <SheetContent
-        className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-lg"
+        className="flex h-full w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl lg:max-w-3xl"
         showCloseButton={false}
         side="right"
       >
-        <SheetHeader className="flex shrink-0 flex-row items-center justify-between border-b px-4 py-3">
+        <SheetHeader className="flex shrink-0 flex-row items-center justify-between border-b bg-background/80 px-6 py-4 backdrop-blur-sm">
           <SheetTitle className="text-base">
             {currentIndex >= 0
               ? `Сцена ${currentIndex + 1} из ${scenes.length}`
@@ -108,7 +108,7 @@ function SceneSidebarContent({
 
   return (
     <ScrollArea className="min-h-0 flex-1">
-      <div className="space-y-4 p-4">
+      <div className="space-y-6 p-6 pb-10">
         <ScenePlayer
           hasNext={currentIndex < total - 1}
           hasPrev={currentIndex > 0}
@@ -135,8 +135,8 @@ function SceneSidebarContent({
         )}
 
         <Separator />
-        <div>
-          <p className="mb-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
+        <div className="space-y-3">
+          <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
             Транскрипт
           </p>
           <SceneTranscript transcript={scene.transcript} />

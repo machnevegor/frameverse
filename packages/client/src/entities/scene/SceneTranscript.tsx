@@ -1,5 +1,9 @@
-import { ScrollArea } from "#/components/ui/scroll-area";
-import { Separator } from "#/components/ui/separator";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "#/components/ui/accordion";
 import type {
   SceneTranscript as SceneTranscriptType,
   TranscriptSegment,
@@ -23,48 +27,66 @@ export function SceneTranscript({ transcript }: SceneTranscriptProps) {
   }
 
   return (
-    <ScrollArea className="h-64 rounded border">
-      <div className="space-y-4 p-3">
-        {hasLeft && (
-          <SegmentGroup
-            label="Контекст до сцены"
-            muted
-            segments={transcript.left_segments ?? []}
-          />
-        )}
-        {hasLeft && hasScene && <Separator />}
-        {hasScene && (
-          <SegmentGroup
-            label="Реплики сцены"
-            segments={transcript.scene_segments ?? []}
-          />
-        )}
-        {hasRight && (hasLeft || hasScene) && <Separator />}
-        {hasRight && (
-          <SegmentGroup
-            label="Контекст после сцены"
-            muted
-            segments={transcript.right_segments ?? []}
-          />
-        )}
-      </div>
-    </ScrollArea>
+    <div className="rounded-lg border bg-background px-4">
+      <Accordion className="w-full" defaultValue={["scene"]} type="multiple">
+        <AccordionItem value="before">
+          <AccordionTrigger className="text-muted-foreground">
+            Транскрипт до
+          </AccordionTrigger>
+          <AccordionContent>
+            {hasLeft ? (
+              <SegmentGroup muted segments={transcript.left_segments ?? []} />
+            ) : (
+              <p className="text-muted-foreground text-sm">Нет данных</p>
+            )}
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="scene">
+          <AccordionTrigger>Транскрипт</AccordionTrigger>
+          <AccordionContent>
+            {hasScene ? (
+              <SegmentGroup segments={transcript.scene_segments ?? []} />
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                Транскрипт сцены недоступен
+              </p>
+            )}
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="after">
+          <AccordionTrigger className="text-muted-foreground">
+            Транскрипт после
+          </AccordionTrigger>
+          <AccordionContent>
+            {hasRight ? (
+              <SegmentGroup muted segments={transcript.right_segments ?? []} />
+            ) : (
+              <p className="text-muted-foreground text-sm">Нет данных</p>
+            )}
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+    </div>
   );
 }
 
 interface SegmentGroupProps {
   segments: TranscriptSegment[];
-  label: string;
+  label?: string;
   muted?: boolean;
 }
 
 function SegmentGroup({ segments, label, muted }: SegmentGroupProps) {
   return (
     <div>
-      <p className="mb-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
-        {label}
-      </p>
-      <div className="space-y-1.5">
+      {label && (
+        <p className="mb-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
+          {label}
+        </p>
+      )}
+      <div className="space-y-2">
         {segments.map((seg, i) => (
           <div
             className={`flex gap-2 text-sm ${muted ? "text-muted-foreground" : ""}`}
