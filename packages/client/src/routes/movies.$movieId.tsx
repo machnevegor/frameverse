@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { parseAsString, useQueryState } from "nuqs";
+import { parseAsInteger, parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "#/components/ui/badge";
+import { Button } from "#/components/ui/button";
 import { Separator } from "#/components/ui/separator";
 import { Skeleton } from "#/components/ui/skeleton";
 import {
@@ -13,6 +14,7 @@ import {
 import { MovieCard } from "#/entities/movie/MovieCard";
 import { SceneCard, SceneCardSkeleton } from "#/entities/scene/SceneCard";
 import type { Scene } from "#/shared/api/types";
+import { SCENES_PER_PAGE } from "#/shared/config/constants";
 import { formatDuration } from "#/shared/lib/format";
 import { SceneSidebar } from "#/widgets/scene-sidebar/SceneSidebar";
 
@@ -29,6 +31,10 @@ function MoviePage() {
     "scene",
     parseAsString,
   );
+  const [scenePage, setScenePage] = useQueryState(
+    "scenePage",
+    parseAsInteger.withDefault(1),
+  );
 
   const { data: movie, isLoading: movieLoading } = useQuery(
     movieQueryOptions(movieId),
@@ -37,8 +43,14 @@ function MoviePage() {
     movieScenesQueryOptions(movieId),
   );
 
+  const totalScenes = scenes?.length ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalScenes / SCENES_PER_PAGE));
+  const page = Math.min(scenePage, totalPages);
+  const start = (page - 1) * SCENES_PER_PAGE;
+  const paginatedScenes = scenes?.slice(start, start + SCENES_PER_PAGE) ?? [];
+
   return (
-    <main className="page-wrap px-4 py-8">
+    <main className="py-8 content-container">
       {/* Movie details */}
       {movieLoading ? (
         <div className="mb-8 flex gap-4">
@@ -81,7 +93,7 @@ function MoviePage() {
           <h2 className="font-semibold text-lg">Сцены</h2>
           {scenes && (
             <Badge className="text-xs" variant="secondary">
-              {scenes.length}
+              {totalScenes}
             </Badge>
           )}
         </div>
@@ -97,7 +109,7 @@ function MoviePage() {
               Сцены ещё не обработаны
             </p>
           ) : (
-            scenes?.map((scene, i) => (
+            paginatedScenes.map((scene, i) => (
               <motion.div
                 animate={{ opacity: 1, y: 0 }}
                 initial={{ opacity: 0, y: 8 }}
@@ -117,6 +129,32 @@ function MoviePage() {
             ))
           )}
         </div>
+
+        {totalScenes > SCENES_PER_PAGE && (
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              Страница {page} из {totalPages}
+            </span>
+            <div className="flex gap-1">
+              <Button
+                disabled={page <= 1}
+                onClick={() => void setScenePage(page - 1)}
+                size="sm"
+                variant="outline"
+              >
+                Назад
+              </Button>
+              <Button
+                disabled={page >= totalPages}
+                onClick={() => void setScenePage(page + 1)}
+                size="sm"
+                variant="outline"
+              >
+                Вперёд
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Scene sidebar sheet */}

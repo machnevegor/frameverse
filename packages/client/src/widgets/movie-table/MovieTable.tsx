@@ -6,7 +6,6 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ReactTableDevtools } from "@tanstack/react-table-devtools";
 import { parseAsInteger, useQueryState } from "nuqs";
 import { Button } from "#/components/ui/button";
 import { Skeleton } from "#/components/ui/skeleton";
@@ -123,7 +122,6 @@ export function MovieTable() {
           </div>
         </div>
       )}
-      {import.meta.env.DEV && <ReactTableDevtools table={table} />}
     </div>
   );
 }

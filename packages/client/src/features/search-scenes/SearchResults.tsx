@@ -1,10 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, Link } from "@tanstack/react-router";
 import { SearchX } from "lucide-react";
 import { motion } from "motion/react";
-import { Separator } from "#/components/ui/separator";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "#/components/ui/card";
 import { movieQueryOptions } from "#/entities/movie/api";
-import { MovieCard } from "#/entities/movie/MovieCard";
+import { PosterThumb } from "#/entities/movie/MovieCard";
 import { SceneCard, SceneCardSkeleton } from "#/entities/scene/SceneCard";
 import type { SceneSearchHit } from "#/shared/api/types";
 import { SEARCH_SCENES_PER_MOVIE } from "#/shared/config/constants";
@@ -30,9 +36,7 @@ export function SearchResults({ hits, isLoading }: SearchResultsProps) {
     );
   }
 
-  // Group hits by movie_id preserving order of first occurrence
   const grouped = groupByMovie(hits);
-  const isSingleMovie = grouped.length === 1;
 
   return (
     <motion.div
@@ -43,7 +47,6 @@ export function SearchResults({ hits, isLoading }: SearchResultsProps) {
     >
       {grouped.map(({ movieId, scenes }, i) => (
         <MovieResultGroup
-          expanded={isSingleMovie}
           index={i}
           key={movieId}
           movieId={movieId}
@@ -77,14 +80,12 @@ function groupByMovie(hits: SceneSearchHit[]): MovieGroup[] {
 interface MovieResultGroupProps {
   movieId: string;
   scenes: SceneSearchHit[];
-  expanded: boolean;
   index: number;
 }
 
 function MovieResultGroup({
   movieId,
   scenes,
-  expanded,
   index,
 }: MovieResultGroupProps) {
   const { data: movie } = useQuery(movieQueryOptions(movieId));
@@ -101,52 +102,72 @@ function MovieResultGroup({
   return (
     <motion.div
       animate={{ opacity: 1, y: 0 }}
-      className="island-shell rounded-2xl p-4 sm:p-6"
       initial={{ opacity: 0, y: 16 }}
       transition={{ delay: index * 0.07, duration: 0.35, ease: "easeOut" }}
     >
-      {movie ? (
-        <MovieCard compact={!expanded} movie={movie} />
-      ) : (
-        // Skeleton while movie loads
-        <div className="h-10 animate-pulse rounded bg-muted" />
-      )}
-
-      <Separator className="my-4" />
-
-      <div className="mb-3 flex items-center justify-between">
-        <p className="font-medium text-muted-foreground text-sm">
-          {scenes.length} {scenesLabel(scenes.length)}
-        </p>
-        {movie && (
-          <a
-            className="text-muted-foreground text-xs underline-offset-4 hover:text-foreground hover:underline"
-            href={`/movies/${movieId}`}
-          >
-            Все сцены фильма →
-          </a>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        {scenes.map((scene, j) => (
-          <motion.div
-            animate={{ opacity: 1, y: 0 }}
-            initial={{ opacity: 0, y: 8 }}
-            key={scene.id}
-            transition={{
-              delay: index * 0.07 + j * 0.04,
-              duration: 0.3,
-              ease: "easeOut",
-            }}
-          >
-            <SceneCard
-              onClick={() => handleSceneClick(scene.id)}
-              scene={scene}
-            />
-          </motion.div>
-        ))}
-      </div>
+      <Card>
+        <CardHeader className="flex flex-row gap-4 pb-2 sm:gap-5">
+          {movie ? (
+            <>
+              <PosterThumb
+                posterUrl={movie.poster_url}
+                size="md"
+                title={movie.title}
+              />
+              <div className="min-w-0 flex-1 space-y-1">
+                <CardTitle className="line-clamp-2 font-semibold text-lg leading-tight">
+                  {movie.title}
+                </CardTitle>
+                <CardDescription className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+                  {movie.year && <span>{movie.year}</span>}
+                  {movie.genres?.length ? (
+                    <>
+                      {movie.year && <span className="text-border">·</span>}
+                      <span>{movie.genres.slice(0, 3).join(", ")}</span>
+                    </>
+                  ) : null}
+                </CardDescription>
+                {movie.short_description && (
+                  <p className="line-clamp-2 text-muted-foreground text-sm">
+                    {movie.short_description}
+                  </p>
+                )}
+              </div>
+              <Link
+                className="shrink-0 text-primary text-sm underline-offset-4 hover:underline"
+                params={{ movieId }}
+                to="/movies/$movieId"
+              >
+                Все сцены →
+              </Link>
+            </>
+          ) : (
+            <div className="h-20 flex-1 animate-pulse rounded bg-muted" />
+          )}
+        </CardHeader>
+        <CardContent className="space-y-2 pt-0">
+          <p className="text-muted-foreground text-xs">
+            {scenes.length} {scenesLabel(scenes.length)} в выдаче
+          </p>
+          {scenes.map((scene, j) => (
+            <motion.div
+              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 8 }}
+              key={scene.id}
+              transition={{
+                delay: index * 0.07 + j * 0.04,
+                duration: 0.3,
+                ease: "easeOut",
+              }}
+            >
+              <SceneCard
+                onClick={() => handleSceneClick(scene.id)}
+                scene={scene}
+              />
+            </motion.div>
+          ))}
+        </CardContent>
+      </Card>
     </motion.div>
   );
 }
@@ -160,16 +181,24 @@ function scenesLabel(n: number): string {
 
 function SearchSkeleton() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {[1, 2].map((i) => (
-        <div className="island-shell rounded-2xl p-4 sm:p-6" key={i}>
-          <div className="mb-4 h-12 animate-pulse rounded bg-muted" />
-          <div className="space-y-2">
+        <Card key={i}>
+          <CardHeader>
+            <div className="flex gap-4">
+              <div className="h-28 w-20 shrink-0 animate-pulse rounded bg-muted" />
+              <div className="flex-1 space-y-2">
+                <div className="h-5 w-3/4 animate-pulse rounded bg-muted" />
+                <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
             {[1, 2, 3].map((j) => (
               <SceneCardSkeleton key={j} />
             ))}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       ))}
     </div>
   );

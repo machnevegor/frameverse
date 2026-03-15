@@ -81,7 +81,8 @@ function HomePage() {
   const hasQuery = q.trim().length > 0;
 
   return (
-    <main className="page-wrap px-4 pb-16">
+    <main className="pb-16">
+      <div className="content-container">
       {hasQuery ? (
         <>
           <div className="py-6">
@@ -136,6 +137,7 @@ function HomePage() {
           </motion.div>
         </motion.div>
       )}
+      </div>
     </main>
   );
 }
