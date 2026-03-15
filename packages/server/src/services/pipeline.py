@@ -58,6 +58,7 @@ class SceneMaterializationPlan:
     clip_path: Path
     clip_mode: SceneClipMode
     scene_prefix: str
+    nearest_keyframe_sec: float | None
 
 
 @dataclass(slots=True, frozen=True)
@@ -458,19 +459,21 @@ class PipelineService:
             if scene_position in seen_positions:
                 raise RuntimeError(f"Duplicate scene position detected: {scene_position}")
             seen_positions.add(scene_position)
-            mode: SceneClipMode = (
-                "copy" if self._is_keyframe_aligned(float(scene.start), keyframe_times) else "reencode"
-            )
+            start_sec = float(scene.start)
+            is_aligned = self._is_keyframe_aligned(start_sec, keyframe_times)
+            mode: SceneClipMode = "copy" if is_aligned else "reencode"
+            nearest_kf = self._nearest_preceding_keyframe(start_sec, keyframe_times)
             plans.append(
                 SceneMaterializationPlan(
                     clip_index=clip_index,
                     scene_id=scene.id,
                     scene_position=scene_position,
-                    scene_start_sec=float(scene.start),
+                    scene_start_sec=start_sec,
                     scene_end_sec=float(scene.end),
                     clip_path=self._clip_path_for_index(clips_dir, clip_index),
                     clip_mode=mode,
                     scene_prefix=f"movies/{movie_id}/scenes/{scene.id}",
+                    nearest_keyframe_sec=nearest_kf,
                 )
             )
         return plans
@@ -505,6 +508,7 @@ class PipelineService:
                 end_sec=plan.scene_end_sec,
                 clip_path=str(plan.clip_path),
                 mode=plan.clip_mode,
+                nearest_keyframe_sec=plan.nearest_keyframe_sec,
             )
         actual_clip_index = self._clip_index_from_path(clip_path)
         if actual_clip_index != plan.clip_index:
@@ -785,6 +789,16 @@ class PipelineService:
         if previous_index < 0:
             return False
         return (scene_start - keyframe_times[previous_index]) <= SBE_KEYFRAME_ALIGNMENT_TOLERANCE_SEC
+
+    @staticmethod
+    def _nearest_preceding_keyframe(scene_start: float, keyframe_times: list[float]) -> float | None:
+        """Return the largest keyframe time that is <= scene_start, or None if unavailable."""
+        if not keyframe_times:
+            return None
+        idx = bisect_right(keyframe_times, scene_start) - 1
+        if idx < 0:
+            return None
+        return keyframe_times[idx]
 
     @staticmethod
     def _movie_info(movie: MovieModel) -> dict[str, object]:

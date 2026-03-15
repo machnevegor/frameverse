@@ -36,6 +36,7 @@ class SBEProtocol(Protocol):
         end_sec: float,
         clip_path: str,
         mode: SceneClipMode,
+        nearest_keyframe_sec: float | None = None,
     ) -> Path: ...
 
     async def extract_clip_keyframes(
