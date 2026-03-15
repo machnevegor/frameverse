@@ -17,18 +17,33 @@ import {
 } from "#/entities/scene/api";
 import { SceneTranscript } from "#/entities/scene/SceneTranscript";
 import { getFrameImageUrl, getSceneVideoUrl } from "#/shared/api/client";
-import type { Scene } from "#/shared/api/types";
+import type { Frame, Scene, SearchResultScene } from "#/shared/api/types";
 import { formatTimestamp } from "#/shared/lib/format";
 import { ScenePlayer } from "#/widgets/scene-player/ScenePlayer";
 
+// Sidebar accepts either plain Scene[] (movie page) or SearchResultScene[] (search results)
+type SidebarEntry = Scene | SearchResultScene;
+
+function isSidebarEntry(entry: SidebarEntry): entry is SearchResultScene {
+  return "frames" in entry;
+}
+
+function entryScene(entry: SidebarEntry): Scene {
+  return isSidebarEntry(entry) ? entry.scene : entry;
+}
+
+function entryFrames(entry: SidebarEntry): Frame[] | undefined {
+  return isSidebarEntry(entry) ? entry.frames : undefined;
+}
+
 interface SceneSidebarProps {
-  scenes: Scene[];
+  scenes: SidebarEntry[];
 }
 
 export function SceneSidebar({ scenes }: SceneSidebarProps) {
   const [sceneId, setSceneId] = useQueryState("scene", parseAsString);
 
-  const currentIndex = scenes.findIndex((s) => s.id === sceneId);
+  const currentIndex = scenes.findIndex((s) => entryScene(s).id === sceneId);
   const isOpen = Boolean(sceneId);
 
   function close() {
@@ -36,9 +51,11 @@ export function SceneSidebar({ scenes }: SceneSidebarProps) {
   }
 
   function navigateTo(index: number) {
-    const scene = scenes[index];
-    if (scene) void setSceneId(scene.id);
+    const entry = scenes[index];
+    if (entry) void setSceneId(entryScene(entry).id);
   }
+
+  const currentEntry = currentIndex >= 0 ? scenes[currentIndex] : undefined;
 
   return (
     <Sheet onOpenChange={(o) => !o && close()} open={isOpen}>
@@ -63,6 +80,14 @@ export function SceneSidebar({ scenes }: SceneSidebarProps) {
             currentIndex={currentIndex}
             onNext={() => navigateTo(currentIndex + 1)}
             onPrev={() => navigateTo(currentIndex - 1)}
+            preloadedFrames={
+              currentEntry ? entryFrames(currentEntry) : undefined
+            }
+            preloadedScene={
+              currentEntry && isSidebarEntry(currentEntry)
+                ? currentEntry.scene
+                : undefined
+            }
             sceneId={sceneId}
             total={scenes.length}
           />
@@ -78,6 +103,8 @@ interface SceneSidebarContentProps {
   total: number;
   onPrev: () => void;
   onNext: () => void;
+  preloadedScene?: Scene;
+  preloadedFrames?: Frame[];
 }
 
 function SceneSidebarContent({
@@ -86,13 +113,23 @@ function SceneSidebarContent({
   total,
   onPrev,
   onNext,
+  preloadedScene,
+  preloadedFrames,
 }: SceneSidebarContentProps) {
-  const { data: scene, isLoading: sceneLoading } = useQuery(
-    sceneQueryOptions(sceneId),
-  );
-  const { data: frames } = useQuery(sceneFramesQueryOptions(sceneId));
+  const { data: fetchedScene, isLoading: sceneLoading } = useQuery({
+    ...sceneQueryOptions(sceneId),
+    enabled: !preloadedScene,
+  });
+  const { data: fetchedFrames } = useQuery({
+    ...sceneFramesQueryOptions(sceneId),
+    enabled: !preloadedFrames,
+  });
 
-  if (sceneLoading) {
+  const scene = preloadedScene ?? fetchedScene;
+  const frames = preloadedFrames ?? fetchedFrames;
+  const isLoading = !preloadedScene && sceneLoading;
+
+  if (isLoading) {
     return (
       <div className="flex-1 space-y-4 overflow-auto p-4">
         <Skeleton className="aspect-video w-full rounded-lg" />

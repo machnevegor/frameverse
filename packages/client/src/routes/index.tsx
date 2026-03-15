@@ -1,14 +1,11 @@
-import { queryOptions, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { parseAsString, useQueryState } from "nuqs";
+import { useEffect, useRef } from "react";
 import { SearchBar } from "#/features/search-scenes/SearchBar";
 import { SearchResults } from "#/features/search-scenes/SearchResults";
-import { searchScenes } from "#/shared/api/client";
-import {
-  SEARCH_SCENES_LIMIT,
-  SEARCH_SCENES_SCORE_THRESHOLD,
-} from "#/shared/config/constants";
+import { SearchTimeline } from "#/features/search-scenes/SearchTimeline";
+import { useAgentSearch } from "#/features/search-scenes/useAgentSearch";
 import { FrameverseLogo } from "#/shared/ui/FrameverseLogo";
 import { ShinyText } from "#/shared/ui/ShinyText";
 import { SceneSidebar } from "#/widgets/scene-sidebar/SceneSidebar";
@@ -68,34 +65,59 @@ const logoVariants = {
   },
 };
 
-const searchScenesQueryOptions = (q: string) =>
-  queryOptions({
-    queryKey: ["search", "scenes", q],
-    queryFn: () => searchScenes({ query: q, limit: SEARCH_SCENES_LIMIT }),
-    enabled: q.length > 0,
-    staleTime: 30_000,
-  });
-
 export const Route = createFileRoute("/")({ component: HomePage });
 
 function HomePage() {
-  const [q] = useQueryState("q", parseAsString.withDefault(""));
-  const { data: hits, isFetching } = useQuery(searchScenesQueryOptions(q));
-  const filteredHits = (hits ?? []).filter(
-    (hit) => hit.score * 100 >= SEARCH_SCENES_SCORE_THRESHOLD,
-  );
+  const [q, setQ] = useQueryState("q", parseAsString.withDefault(""));
+  const { status, events, groups, summary, error, search, reset } =
+    useAgentSearch();
 
-  const hasQuery = q.trim().length > 0;
+  const isStreaming = status === "streaming";
+  const isDone = status === "done";
+  const isError = status === "error";
+
+  // If the page is opened (or refreshed) with a query in the URL, re-trigger search
+  const initialSearchDoneRef = useRef(false);
+  useEffect(() => {
+    if (!initialSearchDoneRef.current && q.trim()) {
+      initialSearchDoneRef.current = true;
+      search(q);
+    }
+  }, [q, search]);
+
+  // Show search mode when there's an active query or search is in progress
+  const showSearchMode = q.trim().length > 0 || status !== "idle";
+
+  function handleSearch(query: string) {
+    void setQ(query);
+    search(query);
+  }
+
+  function handleCancel() {
+    reset();
+    void setQ(null);
+  }
 
   return (
     <main className="pb-16">
       <div className="content-container">
-        {hasQuery ? (
+        {showSearchMode ? (
           <>
             <div className="py-6">
-              <SearchBar compact isLoading={isFetching} />
+              <SearchBar
+                compact
+                isLoading={isStreaming}
+                onCancel={handleCancel}
+                onSearch={handleSearch}
+              />
             </div>
-            <SearchResults hits={filteredHits} isLoading={isFetching} />
+            <SearchTimeline events={events} status={status} />
+            {isDone && <SearchResults groups={groups} summary={summary} />}
+            {isError && (
+              <div className="py-8 text-center text-destructive text-sm">
+                {error ?? "Произошла ошибка поиска"}
+              </div>
+            )}
           </>
         ) : (
           <motion.div
@@ -130,7 +152,7 @@ function HomePage() {
 
             {/* Search bar */}
             <motion.div className="w-full max-w-2xl" variants={blockVariants}>
-              <SearchBar isLoading={isFetching} />
+              <SearchBar isLoading={isStreaming} onSearch={handleSearch} />
             </motion.div>
 
             {/* Hint chips */}
@@ -139,14 +161,16 @@ function HomePage() {
               variants={chipsContainerVariants}
             >
               {HINT_QUERIES.map((hint) => (
-                <HintChip key={hint} text={hint} />
+                <HintChip key={hint} onSearch={handleSearch} text={hint} />
               ))}
             </motion.div>
           </motion.div>
         )}
       </div>
 
-      {filteredHits.length > 0 && <SceneSidebar scenes={filteredHits} />}
+      {isDone && groups.length > 0 && (
+        <SceneSidebar scenes={groups.flatMap((g) => g.scenes)} />
+      )}
     </main>
   );
 }
@@ -158,12 +182,17 @@ const HINT_QUERIES = [
   "прощание на вокзале под дождём",
 ];
 
-function HintChip({ text }: { text: string }) {
-  const [, setQ] = useQueryState("q", parseAsString.withDefault(""));
+function HintChip({
+  text,
+  onSearch,
+}: {
+  text: string;
+  onSearch: (q: string) => void;
+}) {
   return (
     <motion.button
       className="rounded-full border border-border bg-background px-3 py-1.5 text-muted-foreground text-sm transition hover:border-primary/40 hover:text-foreground"
-      onClick={() => void setQ(text)}
+      onClick={() => onSearch(text)}
       type="button"
       variants={chipVariants}
       whileHover={{ scale: 1.04, transition: { duration: 0.18 } }}

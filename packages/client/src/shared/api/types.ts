@@ -107,10 +107,6 @@ export interface Scene {
   video_url?: string | null;
 }
 
-export interface SceneSearchHit extends Scene {
-  score: number;
-}
-
 export interface Frame {
   id: string;
   updated_at: string;
@@ -142,12 +138,6 @@ export interface CreateTaskInput {
   description?: string | null;
   short_description?: string | null;
   poster_s3_key?: string | null;
-}
-
-export interface SearchScenesInput {
-  query: string;
-  movie_id?: string | null;
-  limit?: number;
 }
 
 export interface ApiResponse<T> {
@@ -188,3 +178,52 @@ export function isNonTerminalStatus(status: MovieStatus): boolean {
 export function isFailedStatus(status: MovieStatus): boolean {
   return status.startsWith("failed_");
 }
+
+// SSE search event types
+
+export interface SearchResultScene {
+  scene: Scene;
+  frames: Frame[];
+}
+
+export interface SearchResultGroup {
+  movie_id: string;
+  movie_title: string;
+  scenes: SearchResultScene[];
+}
+
+interface SearchStartedPayload {
+  query: string;
+}
+
+interface ThinkingPayload {
+  message: string;
+}
+
+interface SearchingPayload {
+  text_query: string;
+  visual_query: string;
+}
+
+interface ResultsFoundPayload {
+  count: number;
+}
+
+interface ConclusionPayload {
+  result: {
+    groups: SearchResultGroup[];
+    summary: string;
+  };
+}
+
+interface SearchErrorPayload {
+  message: string;
+}
+
+export type SearchEvent =
+  | { type: "search_started"; data: SearchStartedPayload }
+  | { type: "thinking"; data: ThinkingPayload }
+  | { type: "searching"; data: SearchingPayload }
+  | { type: "results_found"; data: ResultsFoundPayload }
+  | { type: "conclusion"; data: ConclusionPayload }
+  | { type: "error"; data: SearchErrorPayload };

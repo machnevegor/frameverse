@@ -3,10 +3,6 @@ import type { MovieStatus, SceneStatus } from "../api/types";
 export const API_BASE =
   typeof window === "undefined" ? "https://frameverse.ru/api/v0" : "/api/v0";
 
-export const SEARCH_SCENES_LIMIT = 30;
-export const SEARCH_SCENES_PER_MOVIE = 3;
-export const SEARCH_SCENES_SCORE_THRESHOLD = 70.0;
-
 export const SCENES_PER_PAGE = 20;
 
 export const MOVIE_STATUS_LABEL: Record<MovieStatus, string> = {

@@ -9,8 +9,6 @@ import type {
   PresignData,
   PresignInput,
   Scene,
-  SceneSearchHit,
-  SearchScenesInput,
   Task,
   TranscriptSegment,
 } from "./types";
@@ -131,15 +129,6 @@ export async function getMovieTranscript(
 
 export async function listMovieScenes(movieId: string): Promise<Scene[]> {
   return apiJson<Scene[]>(`/movies/${movieId}/scenes`);
-}
-
-export async function searchScenes(
-  input: SearchScenesInput,
-): Promise<SceneSearchHit[]> {
-  return apiJson<SceneSearchHit[]>("/search/scenes", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
 }
 
 export async function getScene(sceneId: string): Promise<Scene> {

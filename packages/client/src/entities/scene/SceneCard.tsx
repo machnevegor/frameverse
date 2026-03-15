@@ -1,36 +1,33 @@
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "lucide-react";
-import { Badge } from "#/components/ui/badge";
 import { Skeleton } from "#/components/ui/skeleton";
-import type { Scene, SceneSearchHit } from "#/shared/api/types";
+import type { Scene } from "#/shared/api/types";
 import { formatTimestamp } from "#/shared/lib/format";
 import { sceneFramesQueryOptions } from "./api";
 
 interface SceneCardProps {
-  scene: Scene | SceneSearchHit;
+  scene: Scene;
   active?: boolean;
   onClick?: () => void;
+  /** Thumbnail URL from pre-loaded frames — skips the frames query when provided. */
+  thumbnailUrl?: string;
   /** When false, frame thumbnail is not fetched (for lazy loading in long lists). */
   enableFrameQuery?: boolean;
-}
-
-function isSearchHit(scene: Scene | SceneSearchHit): scene is SceneSearchHit {
-  return "score" in scene;
 }
 
 export function SceneCard({
   scene,
   active,
   onClick,
+  thumbnailUrl,
   enableFrameQuery = true,
 }: SceneCardProps) {
   const { data: frames } = useQuery({
     ...sceneFramesQueryOptions(scene.id),
-    enabled: enableFrameQuery,
+    enabled: enableFrameQuery && !thumbnailUrl,
   });
 
-  const firstFrame = frames?.[0];
-  const score = isSearchHit(scene) ? scene.score : null;
+  const imageUrl = thumbnailUrl ?? frames?.[0]?.image_url;
 
   return (
     <button
@@ -41,22 +38,15 @@ export function SceneCard({
       type="button"
     >
       <div className="flex gap-3">
-        <FrameThumb imageUrl={firstFrame?.image_url} />
+        <FrameThumb imageUrl={imageUrl} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium text-sm">
               Сцена {scene.position + 1}
             </span>
-            <div className="flex items-center gap-1.5">
-              {score !== null && (
-                <Badge className="text-xs tabular-nums" variant="outline">
-                  {(score * 100).toFixed(0)}%
-                </Badge>
-              )}
-              <span className="text-muted-foreground text-xs tabular-nums">
-                {formatTimestamp(scene.start)} – {formatTimestamp(scene.end)}
-              </span>
-            </div>
+            <span className="text-muted-foreground text-xs tabular-nums">
+              {formatTimestamp(scene.start)} – {formatTimestamp(scene.end)}
+            </span>
           </div>
           {scene.annotation && (
             <p className="mt-1 line-clamp-2 text-muted-foreground text-xs">
