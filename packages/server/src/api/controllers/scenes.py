@@ -4,80 +4,48 @@ from __future__ import annotations
 
 from uuid import UUID
 
-import structlog
-from litestar import get, head, post
-from litestar.exceptions import ClientException, NotFoundException
-from litestar.response import Response
+from litestar import get, head
+from litestar.exceptions import NotFoundException
+from litestar.params import Parameter
+from litestar.response import Response, ServerSentEvent
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.controllers._mappers import to_frame, to_scene
-from src.api.errors import READ_SCENE_ERROR, SCENE_FRAMES_ERROR, SCENE_VIDEO_ERROR, SEARCH_SCENES_ERROR
-from src.api.schemas.scenes import (
-    ListSceneFramesResult,
-    ReadSceneResult,
-    SceneSearchHit,
-    SearchScenesInput,
-    SearchScenesResult,
-)
+from src.api.errors import READ_SCENE_ERROR, SCENE_FRAMES_ERROR, SCENE_VIDEO_ERROR
+from src.api.schemas.scenes import ListSceneFramesResult, ReadSceneResult
 from src.config import PRESIGNED_URL_TTL_SEC, settings
-from src.services.factory import get_emb, get_storage
+from src.services.factory import get_openrouter, get_storage
 from src.services.frame import FrameService
 from src.services.scene import SceneService
-
-logger = structlog.get_logger(__name__)
-
-
-def _distance_to_score(distance: float | None) -> float | None:
-    if distance is None:
-        return None
-    return max(0.0, min(1.0, 1.0 - (distance / 2.0)))
+from src.services.search import SearchService
 
 
-@post(
+@get(
     f"{settings.base_path}/search/scenes",
     tags=["Search"],
-    summary="Search scenes",
-    description="Semantic scene search over transcript, annotation and visual embeddings.",
+    summary="Search scenes (SSE)",
+    description=(
+        "Server-Sent Events stream for semantic scene search with LLM re-ranking.\n\n"
+        "## SSE Event Types\n\n"
+        "- **search_started** — search initiated (SearchStartedPayload)\n"
+        "- **thinking** — LLM reasoning step (ThinkingPayload)\n"
+        "- **searching** — executing vector search (SearchingPayload)\n"
+        "- **results_found** — total unique candidates found so far (ResultsFoundPayload)\n"
+        "- **conclusion** — final grouped result (ConclusionPayload)\n"
+        "- **error** — unrecoverable error (ErrorPayload)\n\n"
+        "All events carry JSON in the `data` field. "
+        "Payload schemas: `SearchStartedPayload`, `ThinkingPayload`, `SearchingPayload`, "
+        "`ResultsFoundPayload`, `ConclusionPayload`, `ErrorPayload`."
+    ),
+    media_type="text/event-stream",
 )
-async def search_scenes(session: AsyncSession, data: SearchScenesInput) -> SearchScenesResult:
-    if not data.query.strip():
-        raise ClientException(status_code=400, detail=SEARCH_SCENES_ERROR[400])
-
-    try:
-        emb = get_emb()
-        scene_service = SceneService(session)
-        text_query_vector = (await emb.embed_texts([data.query]))[0]
-        image_query_vector = (await emb.embed_visual_queries([data.query]))[0]
-        results = await scene_service.search(
-            text_query_vector=text_query_vector,
-            image_query_vector=image_query_vector,
-            movie_id=data.movie_id,
-            limit=data.limit,
-        )
-
-        hits = []
-        for match in results:
-            scene = to_scene(match.scene)
-            score = _distance_to_score(match.distance)
-            if score is None:
-                continue
-            payload = scene.model_dump(mode="json")
-            payload["score"] = score
-            payload["transcript_score"] = _distance_to_score(match.transcript_distance)
-            payload["annotation_score"] = _distance_to_score(match.annotation_distance)
-            payload["image_score"] = _distance_to_score(match.image_distance)
-            hits.append(SceneSearchHit.model_validate(payload))
-        return SearchScenesResult(data=hits)
-    except Exception as exc:
-        logger.error(
-            "scene search failed",
-            query=data.query,
-            movie_id=str(data.movie_id) if data.movie_id else None,
-            limit=data.limit,
-            error=str(exc),
-            exc_info=True,
-        )
-        raise
+async def search_scenes_stream(
+    session: AsyncSession,
+    query: str = Parameter(min_length=1, description="Natural language search query."),
+    movie_id: UUID | None = Parameter(default=None, required=False, description="Restrict search to one movie."),
+) -> ServerSentEvent:
+    service = SearchService(session, get_openrouter(), get_storage())
+    return ServerSentEvent(service.search(query, movie_id))
 
 
 @get(

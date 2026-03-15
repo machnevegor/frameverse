@@ -21,7 +21,6 @@ MOVIE_VIDEO_ERROR = {404: "Movie with the given identifier does not exist"}
 MOVIE_AUDIO_ERROR = {404: "Movie audio with the given identifier does not exist"}
 MOVIE_TRANSCRIPT_ERROR = {404: "Movie transcript with the given identifier does not exist"}
 MOVIE_SCENES_ERROR = {404: "Movie with the given identifier does not exist"}
-SEARCH_SCENES_ERROR = {400: "Search query must not be empty"}
 READ_SCENE_ERROR = {404: "Scene with the given identifier does not exist"}
 SCENE_VIDEO_ERROR = {404: "Scene video with the given identifier does not exist"}
 SCENE_FRAMES_ERROR = {404: "Scene with the given identifier does not exist"}

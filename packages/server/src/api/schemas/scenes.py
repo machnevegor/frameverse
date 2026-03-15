@@ -6,6 +6,14 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from src.domain import Frame, Scene
+from src.domain.search import (
+    ConclusionPayload,
+    ErrorPayload,
+    ResultsFoundPayload,
+    SearchingPayload,
+    SearchStartedPayload,
+    ThinkingPayload,
+)
 
 
 class ReadSceneParams(BaseModel):
@@ -20,37 +28,20 @@ class SceneFileParams(BaseModel):
     scene_id: UUID = Field(..., description="Unique scene identifier.")
 
 
-class SearchScenesInput(BaseModel):
-    """This object represents the input for semantic scene search."""
+class SearchSseEventSchema(BaseModel):
+    """OpenAPI documentation: all SSE event types for scene search.
 
-    query: str = Field(..., min_length=1, description="Natural language search query.")
-    movie_id: UUID | None = Field(None, description="_Optional_. Restrict search to one movie.")
-    limit: int = Field(10, ge=1, le=100, description="Maximum number of results.")
+    Each field name corresponds to the SSE `event` field value;
+    the field type is the JSON payload sent in the SSE `data` field.
+    This model is not used at runtime — it exists only for schema generation.
+    """
 
-
-class SceneSearchHit(Scene):
-    """This object represents a scene search hit with similarity score."""
-
-    score: float = Field(..., description="Cosine similarity score in range [0, 1].")
-    transcript_score: float | None = Field(
-        None,
-        description="_Optional_. Transcript similarity score in range [0, 1].",
-    )
-    annotation_score: float | None = Field(
-        None,
-        description="_Optional_. Annotation similarity score in range [0, 1].",
-    )
-    image_score: float | None = Field(
-        None,
-        description="_Optional_. Visual similarity score in range [0, 1].",
-    )
-
-
-class SearchScenesResult(BaseModel):
-    """This object represents the result of semantic scene search."""
-
-    data: list[SceneSearchHit]
-    success: Literal[True] = True
+    search_started: SearchStartedPayload
+    thinking: ThinkingPayload
+    searching: SearchingPayload
+    results_found: ResultsFoundPayload
+    conclusion: ConclusionPayload
+    error: ErrorPayload
 
 
 class ReadSceneResult(BaseModel):

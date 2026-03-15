@@ -24,7 +24,7 @@ from src.api.controllers.scenes import (
     head_scene_video,
     list_scene_frames,
     read_scene,
-    search_scenes,
+    search_scenes_stream,
     stream_scene_video,
 )
 from src.api.controllers.tasks import cancel_task, create_task, list_tasks, read_task
@@ -65,7 +65,7 @@ def create_app() -> Litestar:
             stream_movie_audio,
             read_movie_transcript,
             list_movie_scenes,
-            search_scenes,
+            search_scenes_stream,
             read_scene,
             stream_scene_video,
             head_scene_video,

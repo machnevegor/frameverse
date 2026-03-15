@@ -24,6 +24,11 @@ def get_emb() -> OpenRouterAdapter:
     return _openrouter
 
 
+def get_openrouter() -> OpenRouterAdapter:
+    """Return shared OpenRouter adapter (annotation, embeddings, LLM chat)."""
+    return _openrouter
+
+
 def build_pipeline_service(session: AsyncSession) -> PipelineService:
     """Build pipeline service for one DB session."""
     return PipelineService(

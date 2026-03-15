@@ -31,9 +31,11 @@ EMB_TXT_DIMENSIONS = 1024
 EMB_IMG_DIMENSIONS = 2048
 
 # Search
-SEARCH_SCENES_TRANSCRIPT_WEIGHT = 1.0
-SEARCH_SCENES_ANNOTATION_WEIGHT = 1.0
-SEARCH_SCENES_IMAGE_WEIGHT = 1.0
+SEARCH_CANDIDATES_PER_CHANNEL = 10
+SEARCH_MAX_MOVIE_GROUPS = 5
+SEARCH_MAX_SCENES_PER_GROUP = 3
+SEARCH_MAX_LLM_ITERATIONS = 3
+SEARCH_RERANK_PROMPT_NAME = "scene-search-rerank-prompt"
 
 # URLs
 ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com/v2"
@@ -65,6 +67,7 @@ class Settings(BaseSettings):
     ann_model: str = Field(alias="ANN_MODEL")
     emb_txt_model: str = Field(alias="EMB_TXT_MODEL")
     emb_img_model: str = Field(alias="EMB_IMG_MODEL")
+    llm_model: str = Field(default="openai/gpt-5.4", alias="LLM_MODEL")
 
     # Model providers
     assemblyai_api_key: str = Field(alias="ASSEMBLYAI_API_KEY")

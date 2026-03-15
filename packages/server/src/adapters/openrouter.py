@@ -163,6 +163,38 @@ class OpenRouterAdapter(ANNProtocol, EMBProtocol):
             items = sorted(body["data"], key=lambda x: x["index"])
             return [item["embedding"] for item in items]
 
+    def get_prompt(self, name: str) -> tuple[Any, str]:
+        """Fetch and compile a Langfuse prompt. No fallback — raises if missing or empty."""
+        prompt = self._langfuse.get_prompt(name)
+        compiled = prompt.compile()
+        if not isinstance(compiled, str) or not compiled.strip():
+            raise ValueError(f"Langfuse prompt '{name}' must compile to non-empty text")
+        return prompt, compiled.strip()
+
+    async def chat(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        langfuse_prompt: Any | None = None,
+        trace_id: str | None = None,
+        name: str | None = None,
+        metadata: dict[str, str] | None = None,
+        temperature: float = 0.3,
+    ) -> Any:
+        """Chat completion with optional tool calling and Langfuse tracing."""
+        return await self._client.chat.completions.create(
+            model=model,
+            messages=messages,
+            tools=tools,
+            langfuse_prompt=langfuse_prompt,
+            trace_id=trace_id,
+            name=name or "chat",
+            metadata=metadata or {},
+            temperature=temperature,
+        )
+
     @staticmethod
     def _render_annotation_payload(
         movie_info: dict[str, Any],
