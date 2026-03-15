@@ -15,7 +15,6 @@ import { MovieCard } from "#/entities/movie/MovieCard";
 import { SceneCard, SceneCardSkeleton } from "#/entities/scene/SceneCard";
 import type { Scene } from "#/shared/api/types";
 import { SCENES_PER_PAGE } from "#/shared/config/constants";
-import { formatDuration } from "#/shared/lib/format";
 import { SceneSidebar } from "#/widgets/scene-sidebar/SceneSidebar";
 
 export const Route = createFileRoute("/movies/$movieId")({
@@ -53,35 +52,27 @@ function MoviePage() {
     <main className="py-8 content-container">
       {/* Movie details */}
       {movieLoading ? (
-        <div className="mb-8 flex gap-4">
-          <Skeleton className="h-28 w-20 shrink-0 rounded" />
-          <div className="flex-1 space-y-2">
-            <Skeleton className="h-6 w-48" />
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-16 w-full" />
+        <div className="mb-8 flex flex-col gap-6 sm:flex-row sm:gap-8">
+          <Skeleton className="h-72 w-48 shrink-0 rounded-lg sm:h-80 sm:w-56" />
+          <div className="flex-1 space-y-3">
+            <Skeleton className="h-8 w-2/3" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-px w-full" />
+            <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2.5">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton
+                  className="h-4 w-16"
+                  // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
+                  key={i * 2}
+                />
+              ))}
+            </div>
           </div>
         </div>
       ) : movie ? (
         <div className="mb-8">
           <MovieCard movie={movie} />
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            {movie.duration && (
-              <span className="text-muted-foreground text-sm">
-                {formatDuration(movie.duration)}
-              </span>
-            )}
-            {movie.slogan && (
-              <span className="text-muted-foreground text-sm italic">
-                «{movie.slogan}»
-              </span>
-            )}
-          </div>
-          {movie.description &&
-            movie.short_description !== movie.description && (
-              <p className="mt-3 max-w-3xl text-muted-foreground text-sm leading-relaxed">
-                {movie.description}
-              </p>
-            )}
         </div>
       ) : null}
 
@@ -158,7 +149,7 @@ function MoviePage() {
       </div>
 
       {/* Scene sidebar sheet */}
-      {scenes && <SceneSidebar movieId={movieId} scenes={scenes} />}
+      {scenes && <SceneSidebar scenes={scenes} />}
     </main>
   );
 }

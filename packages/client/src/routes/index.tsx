@@ -8,6 +8,7 @@ import { searchScenes } from "#/shared/api/client";
 import { SEARCH_SCENES_LIMIT } from "#/shared/config/constants";
 import { FrameverseLogo } from "#/shared/ui/FrameverseLogo";
 import { ShinyText } from "#/shared/ui/ShinyText";
+import { SceneSidebar } from "#/widgets/scene-sidebar/SceneSidebar";
 
 // Shared easing — expo-out feel, organic deceleration
 const EASE: [number, number, number, number] = [0.25, 0.46, 0.45, 0.94];
@@ -83,61 +84,63 @@ function HomePage() {
   return (
     <main className="pb-16">
       <div className="content-container">
-      {hasQuery ? (
-        <>
-          <div className="py-6">
-            <SearchBar compact isLoading={isFetching} />
-          </div>
-          <SearchResults hits={hits ?? []} isLoading={isFetching} />
-        </>
-      ) : (
-        <motion.div
-          animate="show"
-          className="flex min-h-[calc(100vh-8rem)] flex-col items-center justify-center gap-10 py-16"
-          initial="hidden"
-          variants={pageVariants}
-        >
-          {/* Hero text */}
-          <motion.div className="text-center" variants={blockVariants}>
-            <div className="mb-3 flex items-center justify-center gap-2">
-              <motion.div
-                className="text-foreground/60"
-                variants={logoVariants}
-              >
-                <FrameverseLogo size={18} />
-              </motion.div>
-              <ShinyText
-                className="island-kicker text-base"
-                speed={8}
-                text="фрейм вёрс"
-              />
+        {hasQuery ? (
+          <>
+            <div className="py-6">
+              <SearchBar compact isLoading={isFetching} />
             </div>
-            <h1 className="display-title mb-4 font-bold text-(--sea-ink) text-4xl leading-tight tracking-tight sm:text-5xl">
-              Найди фильм по содержанию
-            </h1>
-            <p className="mx-auto max-w-md text-(--sea-ink-soft) text-base leading-relaxed sm:text-lg">
-              Опишите сцену, реплику или атмосферу — система найдёт нужный
-              момент по смыслу, а не по словам
-            </p>
-          </motion.div>
-
-          {/* Search bar */}
-          <motion.div className="w-full max-w-2xl" variants={blockVariants}>
-            <SearchBar isLoading={isFetching} />
-          </motion.div>
-
-          {/* Hint chips */}
+            <SearchResults hits={hits ?? []} isLoading={isFetching} />
+          </>
+        ) : (
           <motion.div
-            className="flex flex-wrap justify-center gap-2"
-            variants={chipsContainerVariants}
+            animate="show"
+            className="flex min-h-[calc(100vh-8rem)] flex-col items-center justify-center gap-10 py-16"
+            initial="hidden"
+            variants={pageVariants}
           >
-            {HINT_QUERIES.map((hint) => (
-              <HintChip key={hint} text={hint} />
-            ))}
+            {/* Hero text */}
+            <motion.div className="text-center" variants={blockVariants}>
+              <div className="mb-3 flex items-center justify-center gap-2">
+                <motion.div
+                  className="text-foreground/60"
+                  variants={logoVariants}
+                >
+                  <FrameverseLogo size={18} />
+                </motion.div>
+                <ShinyText
+                  className="island-kicker text-base"
+                  speed={8}
+                  text="фрейм вёрс"
+                />
+              </div>
+              <h1 className="display-title mb-4 font-bold text-(--sea-ink) text-4xl leading-tight tracking-tight sm:text-5xl">
+                Найди фильм по содержанию
+              </h1>
+              <p className="mx-auto max-w-md text-(--sea-ink-soft) text-base leading-relaxed sm:text-lg">
+                Опишите сцену, реплику или атмосферу — система найдёт нужный
+                момент по смыслу, а не по словам
+              </p>
+            </motion.div>
+
+            {/* Search bar */}
+            <motion.div className="w-full max-w-2xl" variants={blockVariants}>
+              <SearchBar isLoading={isFetching} />
+            </motion.div>
+
+            {/* Hint chips */}
+            <motion.div
+              className="flex flex-wrap justify-center gap-2"
+              variants={chipsContainerVariants}
+            >
+              {HINT_QUERIES.map((hint) => (
+                <HintChip key={hint} text={hint} />
+              ))}
+            </motion.div>
           </motion.div>
-        </motion.div>
-      )}
+        )}
       </div>
+
+      {hits && hits.length > 0 && <SceneSidebar scenes={hits} />}
     </main>
   );
 }

@@ -1,6 +1,8 @@
 import { Film } from "lucide-react";
 import { Badge } from "#/components/ui/badge";
+import { Separator } from "#/components/ui/separator";
 import type { Movie } from "#/shared/api/types";
+import { formatDuration } from "#/shared/lib/format";
 
 interface MovieCardProps {
   movie: Movie;
@@ -26,25 +28,87 @@ export function MovieCard({ movie, compact = false }: MovieCardProps) {
     );
   }
 
-  return (
-    <div className="flex gap-4">
-      <PosterThumb posterUrl={movie.poster_url} size="md" title={movie.title} />
-      <div className="min-w-0 flex-1">
-        <h2 className="font-semibold text-xl leading-tight">{movie.title}</h2>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          {movie.year && (
-            <span className="text-muted-foreground text-sm">{movie.year}</span>
-          )}
-          {movie.genres?.map((g) => (
-            <Badge className="text-xs" key={g} variant="secondary">
+  const meta: { label: string; value: React.ReactNode }[] = [];
+
+  if (movie.year) meta.push({ label: "Год", value: movie.year });
+  if (movie.duration)
+    meta.push({ label: "Время", value: formatDuration(movie.duration) });
+  if (movie.genres?.length)
+    meta.push({
+      label: "Жанр",
+      value: (
+        <div className="flex flex-wrap gap-1">
+          {movie.genres.map((g) => (
+            <Badge key={g} variant="secondary">
               {g}
             </Badge>
           ))}
         </div>
-        {movie.short_description && (
-          <p className="mt-2 line-clamp-3 text-muted-foreground text-sm">
-            {movie.short_description}
-          </p>
+      ),
+    });
+  if (movie.slogan)
+    meta.push({
+      label: "Слоган",
+      value: <span className="italic">«{movie.slogan}»</span>,
+    });
+
+  return (
+    <div className="flex flex-col gap-6 sm:flex-row sm:gap-8">
+      {/* Poster */}
+      <div className="shrink-0">
+        <PosterThumb
+          posterUrl={movie.poster_url}
+          size="lg"
+          title={movie.title}
+        />
+      </div>
+
+      {/* Info */}
+      <div className="min-w-0 flex-1 space-y-4">
+        <div>
+          <h1 className="font-bold text-2xl leading-tight sm:text-3xl">
+            {movie.title}
+            {movie.year && (
+              <span className="ml-2 font-normal text-2xl text-muted-foreground">
+                ({movie.year})
+              </span>
+            )}
+          </h1>
+          {movie.short_description && (
+            <p className="mt-2 text-muted-foreground text-sm leading-relaxed">
+              {movie.short_description}
+            </p>
+          )}
+        </div>
+
+        {meta.length > 0 && (
+          <>
+            <Separator />
+            <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2.5 text-sm">
+              {meta.map(({ label, value }) => (
+                <>
+                  <dt className="text-muted-foreground" key={`${label}-dt`}>
+                    {label}
+                  </dt>
+                  <dd className="font-medium" key={`${label}-dd`}>
+                    {value}
+                  </dd>
+                </>
+              ))}
+            </dl>
+          </>
+        )}
+
+        {movie.description && movie.description !== movie.short_description && (
+          <>
+            <Separator />
+            <div>
+              <p className="mb-1.5 font-medium text-muted-foreground text-xs uppercase tracking-wide">
+                О фильме
+              </p>
+              <p className="text-sm leading-relaxed">{movie.description}</p>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -54,18 +118,24 @@ export function MovieCard({ movie, compact = false }: MovieCardProps) {
 interface PosterThumbProps {
   posterUrl?: string | null;
   title: string;
-  size: "sm" | "md";
+  size: "sm" | "md" | "lg";
 }
 
+const POSTER_SIZES = {
+  sm: "h-14 w-10",
+  md: "h-28 w-20",
+  lg: "h-72 w-48 sm:h-80 sm:w-56",
+};
+
 function PosterThumb({ posterUrl, title, size }: PosterThumbProps) {
-  const sizeClass = size === "sm" ? "h-14 w-10" : "h-28 w-20";
+  const sizeClass = POSTER_SIZES[size];
 
   if (!posterUrl) {
     return (
       <div
-        className={`${sizeClass} flex shrink-0 items-center justify-center rounded bg-muted text-muted-foreground`}
+        className={`${sizeClass} flex shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground`}
       >
-        <Film className="size-4" />
+        <Film className="size-6" />
       </div>
     );
   }
@@ -73,7 +143,7 @@ function PosterThumb({ posterUrl, title, size }: PosterThumbProps) {
   return (
     <img
       alt={title}
-      className={`${sizeClass} shrink-0 rounded object-cover`}
+      className={`${sizeClass} shrink-0 rounded-lg object-cover shadow-md`}
       src={posterUrl}
     />
   );

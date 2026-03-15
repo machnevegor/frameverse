@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import {
   flexRender,
   getCoreRowModel,
@@ -28,6 +29,7 @@ export function TaskTable() {
     parseAsInteger.withDefault(1),
   );
   const { data, isLoading } = useQuery(tasksQueryOptions(page, PER_PAGE));
+  const navigate = useNavigate();
 
   const table = useReactTable({
     data: data?.data ?? [],
@@ -81,7 +83,17 @@ export function TaskTable() {
               </TableRow>
             ) : (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow
+                  className="cursor-pointer"
+                  key={row.id}
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest("a,button")) return;
+                    void navigate({
+                      to: "/dashboard/tasks/$taskId",
+                      params: { taskId: row.original.id },
+                    });
+                  }}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(

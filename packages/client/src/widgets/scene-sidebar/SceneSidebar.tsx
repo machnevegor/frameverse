@@ -23,10 +23,9 @@ import { ScenePlayer } from "#/widgets/scene-player/ScenePlayer";
 
 interface SceneSidebarProps {
   scenes: Scene[];
-  movieId: string;
 }
 
-export function SceneSidebar({ scenes, movieId: _movieId }: SceneSidebarProps) {
+export function SceneSidebar({ scenes }: SceneSidebarProps) {
   const [sceneId, setSceneId] = useQueryState("scene", parseAsString);
 
   const currentIndex = scenes.findIndex((s) => s.id === sceneId);
@@ -44,7 +43,7 @@ export function SceneSidebar({ scenes, movieId: _movieId }: SceneSidebarProps) {
   return (
     <Sheet onOpenChange={(o) => !o && close()} open={isOpen}>
       <SheetContent
-        className="flex w-full flex-col p-0 sm:max-w-lg"
+        className="flex h-full w-full flex-col gap-0 p-0 sm:max-w-lg"
         showCloseButton={false}
         side="right"
       >
@@ -95,7 +94,7 @@ function SceneSidebarContent({
 
   if (sceneLoading) {
     return (
-      <div className="flex-1 space-y-4 p-4">
+      <div className="flex-1 space-y-4 overflow-auto p-4">
         <Skeleton className="aspect-video w-full rounded-lg" />
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-32 w-full" />
@@ -108,9 +107,8 @@ function SceneSidebarContent({
   const videoUrl = scene.video_url ?? getSceneVideoUrl(sceneId);
 
   return (
-    <ScrollArea className="flex-1">
+    <ScrollArea className="min-h-0 flex-1">
       <div className="space-y-4 p-4">
-        {/* Video player */}
         <ScenePlayer
           hasNext={currentIndex < total - 1}
           hasPrev={currentIndex > 0}
@@ -119,13 +117,11 @@ function SceneSidebarContent({
           videoUrl={videoUrl}
         />
 
-        {/* Time range */}
         <p className="text-muted-foreground text-sm tabular-nums">
           {formatTimestamp(scene.start)} – {formatTimestamp(scene.end)}
           <span className="ml-2">({formatTimestamp(scene.duration)})</span>
         </p>
 
-        {/* Annotation */}
         {scene.annotation && (
           <>
             <Separator />
@@ -138,7 +134,6 @@ function SceneSidebarContent({
           </>
         )}
 
-        {/* Transcript */}
         <Separator />
         <div>
           <p className="mb-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
@@ -147,7 +142,6 @@ function SceneSidebarContent({
           <SceneTranscript transcript={scene.transcript} />
         </div>
 
-        {/* Keyframes */}
         {frames && frames.length > 0 && (
           <>
             <Separator />
@@ -162,7 +156,7 @@ function SceneSidebarContent({
                     className="aspect-video w-full rounded object-cover"
                     key={frame.id}
                     loading="lazy"
-                    src={getFrameImageUrl(frame.id)}
+                    src={frame.image_url ?? getFrameImageUrl(frame.id)}
                   />
                 ))}
               </div>
@@ -170,27 +164,28 @@ function SceneSidebarContent({
           </>
         )}
 
-        {/* Bottom navigation */}
-        <div className="flex justify-between pt-2">
-          <Button
-            disabled={currentIndex <= 0}
-            onClick={onPrev}
-            size="sm"
-            variant="outline"
-          >
-            <ChevronLeft className="mr-1 size-4" />
-            Предыдущая
-          </Button>
-          <Button
-            disabled={currentIndex >= total - 1}
-            onClick={onNext}
-            size="sm"
-            variant="outline"
-          >
-            Следующая
-            <ChevronRight className="ml-1 size-4" />
-          </Button>
-        </div>
+        {total > 1 && (
+          <div className="flex justify-between pt-2">
+            <Button
+              disabled={currentIndex <= 0}
+              onClick={onPrev}
+              size="sm"
+              variant="outline"
+            >
+              <ChevronLeft className="mr-1 size-4" />
+              Предыдущая
+            </Button>
+            <Button
+              disabled={currentIndex >= total - 1}
+              onClick={onNext}
+              size="sm"
+              variant="outline"
+            >
+              Следующая
+              <ChevronRight className="ml-1 size-4" />
+            </Button>
+          </div>
+        )}
       </div>
     </ScrollArea>
   );

@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Image } from "lucide-react";
 import { Badge } from "#/components/ui/badge";
 import { Skeleton } from "#/components/ui/skeleton";
-import { getFrameImageUrl } from "#/shared/api/client";
 import type { Scene, SceneSearchHit } from "#/shared/api/types";
 import { formatTimestamp } from "#/shared/lib/format";
 import { sceneFramesQueryOptions } from "./api";
@@ -42,7 +41,7 @@ export function SceneCard({
       type="button"
     >
       <div className="flex gap-3">
-        <FrameThumb frameId={firstFrame?.id} imageUrl={firstFrame?.image_url} />
+        <FrameThumb imageUrl={firstFrame?.image_url} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium text-sm">
@@ -71,7 +70,6 @@ export function SceneCard({
 }
 
 interface FrameThumbProps {
-  frameId?: string;
   imageUrl?: string;
 }
 
@@ -84,7 +82,6 @@ function FrameThumb({ imageUrl }: FrameThumbProps) {
     );
   }
 
-  const frameId = imageUrl.split("/frames/")[1]?.split("/")[0] ?? "";
   return (
     <img
       alt=""
@@ -93,7 +90,7 @@ function FrameThumb({ imageUrl }: FrameThumbProps) {
       onError={(e) => {
         (e.currentTarget as HTMLImageElement).style.display = "none";
       }}
-      src={getFrameImageUrl(frameId)}
+      src={imageUrl}
     />
   );
 }

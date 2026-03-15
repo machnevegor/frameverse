@@ -1,4 +1,9 @@
 import { Progress } from "#/components/ui/progress";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "#/components/ui/tooltip";
 import type { Progress as ProgressData } from "#/shared/api/types";
 import { PIPELINE_STAGE_LABELS } from "#/shared/config/constants";
 
@@ -47,7 +52,7 @@ export function TaskProgressBar({ progress }: TaskProgressBarProps) {
   );
 }
 
-// Compact inline variant for table cells
+// Compact inline variant for table cells — with tooltip breakdown
 interface TaskProgressCompactProps {
   progress: ProgressData;
 }
@@ -57,10 +62,45 @@ export function TaskProgressCompact({ progress }: TaskProgressCompactProps) {
   const done = progress.scenes_embedded ?? 0;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
+  const rows: { label: string; value: number }[] = [
+    { label: "Обнаружено сцен", value: total },
+    { label: "Извлечено", value: progress.scenes_extracted ?? 0 },
+    { label: "Аннотировано", value: progress.scenes_annotated ?? 0 },
+    { label: "Эмбеддинг", value: progress.scenes_embedded ?? 0 },
+  ];
+
   return (
-    <div className="flex items-center gap-2">
-      <Progress className="h-1.5 w-20" value={pct} />
-      <span className="text-muted-foreground text-xs tabular-nums">{pct}%</span>
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex cursor-default items-center gap-2">
+          <Progress className="h-1.5 w-20" value={pct} />
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {pct}%
+          </span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent className="w-48 space-y-2 p-3" side="top">
+        {rows.map((row) => (
+          <div
+            className="flex items-center justify-between gap-4"
+            key={row.label}
+          >
+            <span className="text-muted-foreground text-xs">{row.label}</span>
+            <div className="flex items-center gap-1.5">
+              <Progress
+                className="h-1 w-16"
+                value={total > 0 ? Math.round((row.value / total) * 100) : 0}
+              />
+              <span className="w-6 text-right text-xs tabular-nums">
+                {row.value}
+              </span>
+            </div>
+          </div>
+        ))}
+        <div className="border-t pt-1.5 text-center text-muted-foreground text-xs tabular-nums">
+          {total} сцен всего
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }

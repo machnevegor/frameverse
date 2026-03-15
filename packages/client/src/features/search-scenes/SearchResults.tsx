@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, Link } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { SearchX } from "lucide-react";
 import { motion } from "motion/react";
+import { parseAsString, useQueryState } from "nuqs";
 import {
   Card,
   CardContent,
@@ -83,21 +84,9 @@ interface MovieResultGroupProps {
   index: number;
 }
 
-function MovieResultGroup({
-  movieId,
-  scenes,
-  index,
-}: MovieResultGroupProps) {
+function MovieResultGroup({ movieId, scenes, index }: MovieResultGroupProps) {
   const { data: movie } = useQuery(movieQueryOptions(movieId));
-  const navigate = useNavigate();
-
-  function handleSceneClick(sceneId: string) {
-    void navigate({
-      to: "/movies/$movieId",
-      params: { movieId },
-      search: { scene: sceneId },
-    });
-  }
+  const [, setSceneId] = useQueryState("scene", parseAsString);
 
   return (
     <motion.div
@@ -161,7 +150,7 @@ function MovieResultGroup({
               }}
             >
               <SceneCard
-                onClick={() => handleSceneClick(scene.id)}
+                onClick={() => void setSceneId(scene.id)}
                 scene={scene}
               />
             </motion.div>

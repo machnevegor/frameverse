@@ -34,12 +34,12 @@ export function ScenePlayer({
   const [duration, setDuration] = useState(0);
   const [muted, setMuted] = useState(false);
 
-  // Reset state when video source changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset player state when video source changes
   useEffect(() => {
     setPlaying(false);
     setCurrentTime(0);
     setDuration(0);
-  }, []);
+  }, [videoUrl]);
 
   function togglePlay() {
     const v = videoRef.current;
