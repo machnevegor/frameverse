@@ -37,10 +37,10 @@ SEARCH_MAX_MOVIE_GROUPS = 5
 SEARCH_MAX_SCENES_PER_GROUP = 2
 SEARCH_MAX_LLM_ITERATIONS = 3
 SEARCH_LLM_MAX_TOKENS = 25000
-SEARCH_LLM_MAX_SCENES = 20  # max text scenes per tool result sent to LLM
-SEARCH_LLM_MAX_IMAGES = 4  # max images per tool result sent to LLM
-SEARCH_SCORE_THRESHOLD = 0.40  # min similarity in any channel to include scene in tool result
-SEARCH_IMAGE_THRESHOLD = 0.70  # min image similarity to attach a screenshot
+SEARCH_LLM_MAX_SCENES = 20
+SEARCH_LLM_MAX_IMAGES = 6  # total images across all ReAct iterations
+SEARCH_SCORE_THRESHOLD = 0.50
+SEARCH_IMAGE_THRESHOLD = 0.70
 SEARCH_RERANK_PROMPT_NAME = "scene-search-rerank-prompt"
 
 # URLs

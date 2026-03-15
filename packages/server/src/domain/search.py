@@ -41,8 +41,7 @@ class SearchingPayload(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    text_query: str = Field(..., description="Query used for transcript and annotation channels.")
-    visual_query: str = Field(..., description="Query used for image embedding channel.")
+    query: str = Field(..., description="Query used for both text and visual embedding channels.")
 
 
 class ResultsFoundPayload(BaseModel):

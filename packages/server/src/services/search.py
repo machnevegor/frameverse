@@ -47,7 +47,6 @@ from src.domain.search import (
 )
 from src.services.scene import SceneService
 
-# OpenAI function-calling tool definitions for the ReAct search agent
 SEARCH_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
@@ -57,16 +56,12 @@ SEARCH_TOOLS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "text_query": {
+                    "query": {
                         "type": "string",
-                        "description": "Text query for transcript and annotation channels",
-                    },
-                    "visual_query": {
-                        "type": "string",
-                        "description": "Visual description for image embedding channel",
+                        "description": "Search query used for both text and visual embedding channels",
                     },
                 },
-                "required": ["text_query", "visual_query"],
+                "required": ["query"],
             },
         },
     },
@@ -100,7 +95,6 @@ def _sse(event: SearchEventType, payload: Any) -> ServerSentEventMessage:
 
 
 def _transcript_text(scene: SceneModel) -> str:
-    """Extract scene-segment text from raw transcript JSON."""
     raw = scene.transcript or {}
     segments = raw.get("scene_segments", [])
     if not segments:
@@ -111,6 +105,10 @@ def _transcript_text(scene: SceneModel) -> str:
         text = seg.get("text", "")
         parts.append(f"[{speaker}] {text}" if speaker else text)
     return " ".join(parts)
+
+
+def _similarity(distance: float) -> float:
+    return round(max(0.0, min(1.0, 1.0 - distance / 2.0)), 2)
 
 
 @dataclass(slots=True)
@@ -140,9 +138,12 @@ class SearchService:
         self._storage = storage
         self._scene_svc = SceneService(session)
 
-        # incremental candidate registry — persists across all ReAct iterations
         self._candidates: dict[int, CandidateScene] = {}
         self._scene_id_to_number: dict[UUID, int] = {}
+        self._movie_registry: dict[UUID, MovieModel] = {}
+        self._seen_movie_ids: set[UUID] = set()
+        # global image counter — capped at SEARCH_LLM_MAX_IMAGES across all iterations
+        self._images_sent: int = 0
         self._next_number: int = 1
 
     async def search(self, query: str, movie_id: UUID | None = None) -> AsyncGenerator[SSEData, None]:
@@ -159,15 +160,12 @@ class SearchService:
                 model=settings.llm_model,
                 messages=messages,
                 tools=SEARCH_TOOLS,
-                # pass langfuse_prompt only on the first call to link all turns to one prompt version
                 langfuse_prompt=prompt_obj if iteration == 1 else None,
                 name="scene-search-rerank",
                 temperature=0.3,
                 max_tokens=SEARCH_LLM_MAX_TOKENS,
             )
             assistant_msg = response.choices[0].message
-
-            # preserve full assistant turn (content + tool_calls) in conversation history
             messages.append(assistant_msg.model_dump(exclude_unset=True, exclude_none=True))
 
             if assistant_msg.content:
@@ -192,14 +190,10 @@ class SearchService:
                     break
 
                 if fn_name == "search_scenes":
-                    yield _sse(
-                        SearchEventType.SEARCHING,
-                        SearchingPayload(text_query=args["text_query"], visual_query=args["visual_query"]),
-                    )
+                    yield _sse(SearchEventType.SEARCHING, SearchingPayload(query=args["query"]))
 
-                    new_numbers, tool_content = await self._execute_search(
-                        text_query=args["text_query"],
-                        visual_query=args["visual_query"],
+                    tool_content = await self._execute_search(
+                        query=args["query"],
                         movie_id=movie_id,
                     )
 
@@ -220,16 +214,13 @@ class SearchService:
 
     async def _execute_search(
         self,
-        text_query: str,
-        visual_query: str,
+        query: str,
         movie_id: UUID | None,
-    ) -> tuple[list[int], list[dict[str, Any]]]:
-        """Embed queries (parallel, different I/O), then run 3-channel DB search sequentially.
-        asyncio.gather is safe for HTTP calls but not for concurrent queries on one AsyncSession.
-        """
+    ) -> list[dict[str, Any]]:
+        """Embed query for both text and visual channels (parallel HTTP), then run 3-channel DB search."""
         (text_vecs,), (image_vecs,) = await asyncio.gather(
-            self._openrouter.embed_texts([text_query]),
-            self._openrouter.embed_visual_queries([visual_query]),
+            self._openrouter.embed_texts([query]),
+            self._openrouter.embed_visual_queries([query]),
         )
 
         # sequential DB queries — AsyncSession does not support concurrent operations
@@ -243,7 +234,6 @@ class SearchService:
             image_vecs, movie_id=movie_id, limit=SEARCH_CANDIDATES_PER_CHANNEL
         )
 
-        # aggregate per-channel distances by scene_id; keep minimum per channel
         by_channel: dict[UUID, dict[str, float]] = {}
         for hit in transcript_hits:
             by_channel.setdefault(hit.scene_id, {})["transcript"] = hit.distance
@@ -254,12 +244,13 @@ class SearchService:
             d = by_channel.setdefault(hit.scene_id, {})
             d["image"] = min(d.get("image", hit.distance), hit.distance)
 
-        new_scene_ids = [sid for sid in by_channel if sid not in self._scene_id_to_number]
+        repeat_numbers = [self._scene_id_to_number[sid] for sid in by_channel if sid in self._scene_id_to_number]
 
+        new_scene_ids = [sid for sid in by_channel if sid not in self._scene_id_to_number]
         if new_scene_ids:
             await self._load_and_register(new_scene_ids, by_channel)
 
-        # update channel distances for already-registered scenes
+        # update channel distances for already-registered scenes (keep minimum per channel)
         for scene_id, distances in by_channel.items():
             if scene_id not in self._scene_id_to_number:
                 continue
@@ -275,14 +266,13 @@ class SearchService:
                         setattr(c, attr, distances[key])
 
         new_numbers = [self._scene_id_to_number[sid] for sid in new_scene_ids if sid in self._scene_id_to_number]
-        return new_numbers, self._render_tool_result(new_numbers)
+        return self._render_tool_result(new_numbers, repeat_numbers)
 
     async def _load_and_register(
         self,
         new_scene_ids: list[UUID],
         by_channel: dict[UUID, dict[str, float]],
     ) -> None:
-        """Load SceneModel, MovieModel and best FrameModel for new scene_ids; register candidates."""
         scene_id_strs = [str(sid) for sid in new_scene_ids]
 
         scenes_result = await self._session.execute(select(SceneModel).where(SceneModel.id.in_(scene_id_strs)))
@@ -292,7 +282,10 @@ class SearchService:
         movies_result = await self._session.execute(
             select(MovieModel).where(MovieModel.id.in_([str(mid) for mid in movie_ids]))
         )
-        movies_by_id: dict[UUID, MovieModel] = {m.id: m for m in movies_result.scalars().all()}
+        movies_by_id: dict[UUID, MovieModel] = {}
+        for m in movies_result.scalars().all():
+            movies_by_id[m.id] = m
+            self._movie_registry[m.id] = m
 
         frames_result = await self._session.execute(select(FrameModel).where(FrameModel.scene_id.in_(scene_id_strs)))
         best_frames: dict[UUID, FrameModel] = {}
@@ -301,7 +294,6 @@ class SearchService:
             if existing is None or fr.score > existing.score:
                 best_frames[fr.scene_id] = fr
 
-        # generate presigned URLs concurrently
         frame_url_tasks = {
             sid: self._storage.generate_presigned_get_url(fr.image_s3_key, expires_in=PRESIGNED_URL_TTL_SEC)
             for sid, fr in best_frames.items()
@@ -333,7 +325,6 @@ class SearchService:
 
     @staticmethod
     def _max_similarity(c: CandidateScene) -> float:
-        """Best cosine similarity across all channels: score = 1 - dist/2."""
         scores = [
             max(0.0, min(1.0, 1.0 - d / 2.0))
             for d in (c.transcript_distance, c.annotation_distance, c.image_distance)
@@ -341,73 +332,100 @@ class SearchService:
         ]
         return max(scores) if scores else 0.0
 
-    def _render_tool_result(self, new_numbers: list[int]) -> list[dict[str, Any]]:
-        """Render YAML scene descriptions + labeled frames for multimodal tool result."""
-        content: list[dict[str, Any]] = []
-
-        # filter: at least one channel must meet SEARCH_SCORE_THRESHOLD; cap at SEARCH_LLM_MAX_SCENES
+    def _render_tool_result(self, new_numbers: list[int], repeat_numbers: list[int]) -> list[dict[str, Any]]:
         above = [n for n in new_numbers if self._max_similarity(self._candidates[n]) >= SEARCH_SCORE_THRESHOLD][
             :SEARCH_LLM_MAX_SCENES
         ]
 
         if not above:
-            content.append({"type": "text", "text": "Новых релевантных сцен не найдено. Попробуй другой запрос."})
-            return content
+            text = "Новых релевантных сцен не найдено. Попробуй другой запрос."
+            if repeat_numbers:
+                repeat_str = ", ".join(f"#{n}" for n in sorted(repeat_numbers))
+                text += f"\nПовторно найдены уже известные сцены: {repeat_str}."
+            return [{"type": "text", "text": text}]
 
-        # decide which scenes qualify for a screenshot (image similarity >= SEARCH_IMAGE_THRESHOLD)
-        # and cap total images at SEARCH_LLM_MAX_IMAGES
-        image_quota = SEARCH_LLM_MAX_IMAGES
-        scene_to_image_idx: dict[int, int] = {}
-        image_counter = 1
-        for num in above:
-            c = self._candidates[num]
-            if image_quota > 0 and c.frame_url and c.image_distance is not None:
-                img_score = max(0.0, min(1.0, 1.0 - c.image_distance / 2.0))
-                if img_score >= SEARCH_IMAGE_THRESHOLD:
-                    scene_to_image_idx[num] = image_counter
-                    image_counter += 1
-                    image_quota -= 1
+        content: list[dict[str, Any]] = []
 
-        scenes_data: dict[str, Any] = {}
-        for num in above:
-            c = self._candidates[num]
-            movie_label = c.movie_title + (f" ({c.movie_year})" if c.movie_year else "")
-            match_scores: dict[str, float] = {}
-            for label, dist in [
-                ("транскрипт", c.transcript_distance),
-                ("аннотация", c.annotation_distance),
-                ("изображение", c.image_distance),
-            ]:
-                if dist is not None:
-                    match_scores[label] = round(max(0.0, min(1.0, 1.0 - dist / 2.0)), 2)
-            entry: dict[str, Any] = {
-                "фильм": movie_label,
+        # --- block 1: new movies (shown only once across all iterations) ---
+        new_movies: dict[str, Any] = {}
+        for n in above:
+            c = self._candidates[n]
+            movie_id = c.scene.movie_id
+            if movie_id in self._seen_movie_ids:
+                continue
+            movie = self._movie_registry.get(movie_id)
+            if movie is None:
+                continue
+            entry = {
+                k: v
+                for k, v in {
+                    "год": movie.year,
+                    "слоган": movie.slogan,
+                    "жанры": movie.genres,
+                    "краткое_описание": movie.short_description,
+                }.items()
+                if v is not None
+            }
+            new_movies[movie.title] = entry
+            self._seen_movie_ids.add(movie_id)
+
+        if new_movies:
+            movies_yaml = yaml.dump(new_movies, allow_unicode=True, default_flow_style=False, sort_keys=False)
+            content.append({"type": "text", "text": f"Найденные фильмы:\n\n{movies_yaml}"})
+
+        # --- block 2: text search results (transcript + annotation channels) ---
+        text_scenes: dict[str, Any] = {}
+        for n in above:
+            c = self._candidates[n]
+            if c.transcript_distance is None and c.annotation_distance is None:
+                continue
+            scores: dict[str, float] = {}
+            if c.transcript_distance is not None:
+                scores["транскрипт"] = _similarity(c.transcript_distance)
+            if c.annotation_distance is not None:
+                scores["аннотация"] = _similarity(c.annotation_distance)
+            text_scenes[f"Сцена #{n}"] = {
+                "фильм": c.movie_title,
                 "транскрипт": _transcript_text(c.scene),
                 "аннотация": (c.scene.annotation or {}).get("text", "(нет)"),
-                "совпадения": match_scores,
+                "совпадение": scores,
             }
-            # reference the screenshot index so LLM can correlate text and image
-            if num in scene_to_image_idx:
-                entry["скриншот"] = f"изображение #{scene_to_image_idx[num]}"
-            scenes_data[f"Сцена #{num}"] = entry
 
-        yaml_text = yaml.dump(scenes_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
-        content.append({"type": "text", "text": f"Найдено {len(above)} новых сцен:\n\n{yaml_text}"})
+        if text_scenes:
+            text_yaml = yaml.dump(text_scenes, allow_unicode=True, default_flow_style=False, sort_keys=False)
+            content.append({"type": "text", "text": f"Текстовый поиск — {len(text_scenes)} сцен:\n\n{text_yaml}"})
+        else:
+            content.append({"type": "text", "text": "Текстовый поиск: нет новых результатов."})
 
-        # attach screenshots only for scenes that passed the image threshold
-        for num, img_idx in scene_to_image_idx.items():
-            c = self._candidates[num]
-            movie_label = c.movie_title + (f" ({c.movie_year})" if c.movie_year else "")
-            content.append({"type": "text", "text": f"Изображение #{img_idx} — сцена #{num}, фильм «{movie_label}»"})
-            content.append({"type": "image_url", "image_url": {"url": c.frame_url, "detail": "low"}})
+        # --- block 3: visual search results (image channel) ---
+        visual_scenes = [(n, self._candidates[n]) for n in above if self._candidates[n].image_distance is not None]
+
+        if visual_scenes:
+            content.append({"type": "text", "text": f"Визуальный поиск — {len(visual_scenes)} сцен:"})
+            for n, c in visual_scenes:
+                img_score = _similarity(c.image_distance)  # type: ignore[arg-type]
+                content.append(
+                    {
+                        "type": "text",
+                        "text": f"Сцена #{n} (фильм «{c.movie_title}»), визуальное совпадение: {img_score}",
+                    }
+                )
+                if img_score >= SEARCH_IMAGE_THRESHOLD and c.frame_url and self._images_sent < SEARCH_LLM_MAX_IMAGES:
+                    content.append({"type": "image_url", "image_url": {"url": c.frame_url, "detail": "low"}})
+                    self._images_sent += 1
+        else:
+            content.append({"type": "text", "text": "Визуальный поиск: нет новых результатов."})
+
+        # --- repeat scenes note ---
+        if repeat_numbers:
+            repeat_str = ", ".join(f"#{n}" for n in sorted(repeat_numbers))
+            content.append({"type": "text", "text": f"Повторно найдены уже известные сцены: {repeat_str}."})
 
         return content
 
     async def _build_search_result(self, scene_numbers: list[int], summary: str) -> SearchResult:
-        """Map LLM-returned scene numbers to domain objects and group by movie."""
         valid = [n for n in scene_numbers if n in self._candidates]
 
-        # load all frames for selected scenes (client needs all keyframes, not just best)
         selected_scene_ids = [self._candidates[n].scene.id for n in valid]
         all_frames: dict[UUID, list[FrameModel]] = {}
         if selected_scene_ids:
@@ -419,7 +437,6 @@ class SearchService:
             for fr in (await self._session.execute(frame_stmt)).scalars().all():
                 all_frames.setdefault(fr.scene_id, []).append(fr)
 
-        # group by movie_id, preserving LLM relevance order
         groups_map: dict[UUID, SearchResultGroup] = {}
         groups_order: list[UUID] = []
 
