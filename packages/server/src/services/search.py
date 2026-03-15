@@ -247,9 +247,7 @@ class SearchService:
         annotation_hits = await self._scene_svc.search_by_annotation(
             text_vecs, movie_id=movie_id, limit=SEARCH_ANNOTATION_CANDIDATES
         )
-        image_hits = await self._scene_svc.search_by_image(
-            image_vecs, movie_id=movie_id, limit=SEARCH_IMAGE_CANDIDATES
-        )
+        image_hits = await self._scene_svc.search_by_image(image_vecs, movie_id=movie_id, limit=SEARCH_IMAGE_CANDIDATES)
 
         by_channel: dict[UUID, dict[str, float]] = {}
         for hit in transcript_hits:
