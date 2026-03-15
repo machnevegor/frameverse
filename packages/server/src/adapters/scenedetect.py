@@ -10,9 +10,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 import structlog
-from scenedetect import ContentDetector, detect
+from scenedetect import ContentDetector, SceneManager, open_video
 
-from src.config import KEYFRAMES_EXTRACTION_TIMEOUT_SEC, KEYFRAMES_FRAME_SAMPLE_STEP, SBD_THRESHOLD
+from src.config import (
+    KEYFRAMES_EXTRACTION_TIMEOUT_SEC,
+    KEYFRAMES_FRAME_SAMPLE_STEP,
+    SBD_MIN_SCENE_DURATION_SEC,
+    SBD_THRESHOLD,
+)
 from src.protocols.sbd import DetectedScene, SBDProtocol
 from src.protocols.sbe import KeyframeData, SBEProtocol, SceneClipMode
 
@@ -26,10 +31,14 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
         return await asyncio.to_thread(self._detect_sync, video_path)
 
     def _detect_sync(self, video_path: str) -> list[DetectedScene]:
-        detected = detect(video_path=video_path, detector=ContentDetector(threshold=SBD_THRESHOLD))
+        video = open_video(video_path)
+        min_scene_frames = int(SBD_MIN_SCENE_DURATION_SEC * video.frame_rate)
+        manager = SceneManager()
+        manager.add_detector(ContentDetector(threshold=SBD_THRESHOLD, min_scene_len=min_scene_frames))
+        manager.detect_scenes(video)
         return [
-            DetectedScene(scene_index=idx, start_time=float(start_tc.get_seconds()))
-            for idx, (start_tc, _) in enumerate(detected)
+            DetectedScene(scene_index=idx, start_time=float(start.get_seconds()))
+            for idx, (start, _) in enumerate(manager.get_scene_list())
         ]
 
     async def list_video_keyframe_times(self, video_path: str) -> list[float]:
@@ -250,13 +259,13 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
 
         try:
             fps = capture.get(cv2.CAP_PROP_FPS) or 25.0
-            candidates: list[tuple[float, float, np.ndarray]] = []
+            # (timestamp, score, frame_index) — no frame copy to keep RAM bounded
+            candidates: list[tuple[float, float, int]] = []
             previous_gray: np.ndarray | None = None
             frame_index = 0
             sample_step = max(1, int(frame_sample_step))
             deadline = time.perf_counter() + max(0.0, float(max_processing_sec))
             timed_out = False
-            center_weight: float | None = None
 
             while True:
                 if time.perf_counter() >= deadline:
@@ -268,29 +277,18 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
                 if frame_index % sample_step != 0:
                     frame_index += 1
                     continue
+
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                focus_norm = min(float(cv2.Laplacian(gray, cv2.CV_64F).var()) / 1000.0, 1.0)
 
                 if previous_gray is None:
-                    motion = 0.0
+                    motion_norm = 0.0
                 else:
-                    diff = cv2.absdiff(gray, previous_gray)
-                    motion = float(np.mean(diff)) / 255.0
+                    # normalise to [0, 1]: typical inter-frame diff ~5–40 at step=2 / 24fps
+                    motion_norm = min(float(np.mean(cv2.absdiff(gray, previous_gray))) / 40.0, 1.0)
 
-                focus = float(cv2.Laplacian(gray, cv2.CV_64F).var())
-                focus_norm = min(focus / 1000.0, 1.0)
-
-                if center_weight is None:
-                    h, w = gray.shape
-                    center_x = w / 2.0
-                    center_y = h / 2.0
-                    y_indices, x_indices = np.indices(gray.shape)
-                    distance = np.sqrt((x_indices - center_x) ** 2 + (y_indices - center_y) ** 2)
-                    distance /= max(distance.max(), 1.0)
-                    center_weight = float(np.mean(1.0 - distance))
-
-                score = 0.55 * motion + 0.30 * focus_norm + 0.15 * center_weight
-                timestamp = frame_index / fps
-                candidates.append((timestamp, score, frame.copy()))
+                score = 0.60 * focus_norm + 0.40 * motion_norm
+                candidates.append((frame_index / fps, score, frame_index))
                 previous_gray = gray
                 frame_index += 1
 
@@ -308,24 +306,28 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
             scores = np.array([c[1] for c in candidates], dtype=np.float32)
             threshold = float(np.percentile(scores, min_score_percentile))
 
-            selected: list[tuple[float, float, np.ndarray]] = []
-            last_timestamp = -999999.0
-            for timestamp, score, frame in sorted(candidates, key=lambda item: item[1], reverse=True):
+            selected: list[tuple[float, float, int]] = []
+            for timestamp, score, fidx in sorted(candidates, key=lambda c: c[1], reverse=True):
                 if score < threshold:
                     continue
-                if timestamp - last_timestamp < min_gap_sec:
+                # check gap against every already-selected frame, not just the last
+                if any(abs(timestamp - t) < min_gap_sec for t, _, _ in selected):
                     continue
-                selected.append((timestamp, score, frame))
-                last_timestamp = timestamp
+                selected.append((timestamp, score, fidx))
                 if len(selected) >= max_keyframes:
                     break
 
             if not selected:
-                selected = sorted(candidates, key=lambda item: item[1], reverse=True)[:max_keyframes]
+                selected = sorted(candidates, key=lambda c: c[1], reverse=True)[:max_keyframes]
 
-            selected.sort(key=lambda item: item[0])
+            selected.sort(key=lambda c: c[0])
+
             results: list[KeyframeData] = []
-            for timestamp, score, frame in selected:
+            for timestamp, score, fidx in selected:
+                capture.set(cv2.CAP_PROP_POS_FRAMES, fidx)
+                ok, frame = capture.read()
+                if not ok:
+                    continue
                 ok, encoded = cv2.imencode(".jpg", frame)
                 if not ok:
                     continue

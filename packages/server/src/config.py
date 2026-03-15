@@ -4,7 +4,8 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 
 # Shot boundary detection
-SBD_THRESHOLD = 55.0
+SBD_THRESHOLD = 50.0
+SBD_MIN_SCENE_DURATION_SEC = 10.0
 
 # Shot boundary extraction
 SBE_COPY_CONCURRENCY = 4
