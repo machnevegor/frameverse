@@ -62,14 +62,18 @@ function EventRow({ event }: { event: SeqEvent }) {
       return (
         <p className="text-muted-foreground text-sm">
           {SEARCH_EVENT_LABEL.search_started}:{" "}
-          <span className="font-medium text-foreground">{event.data.query}</span>
+          <span className="font-medium text-foreground">
+            {event.data.query}
+          </span>
         </p>
       );
     case "searching":
       return (
         <p className="text-muted-foreground text-sm">
           {SEARCH_EVENT_LABEL.searching}:{" "}
-          <span className="font-medium text-foreground">{event.data.query}</span>
+          <span className="font-medium text-foreground">
+            {event.data.query}
+          </span>
         </p>
       );
     case "results_found":

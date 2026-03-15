@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { parseAsString, useQueryState } from "nuqs";
+import { useState } from "react";
 import { Button } from "#/components/ui/button";
 import { ScrollArea } from "#/components/ui/scroll-area";
 import { Separator } from "#/components/ui/separator";
@@ -116,6 +117,12 @@ function SceneSidebarContent({
   preloadedScene,
   preloadedFrames,
 }: SceneSidebarContentProps) {
+  const [currentSceneTime, setCurrentSceneTime] = useState(0);
+  const [seekRequest, setSeekRequest] = useState<{
+    time: number;
+    seq: number;
+  } | null>(null);
+  const [seekSeq, setSeekSeq] = useState(0);
   const { data: fetchedScene, isLoading: sceneLoading } = useQuery({
     ...sceneQueryOptions(sceneId),
     enabled: !preloadedScene,
@@ -152,6 +159,8 @@ function SceneSidebarContent({
             hasPrev={currentIndex > 0}
             onNext={onNext}
             onPrev={onPrev}
+            onTimeChange={setCurrentSceneTime}
+            seekRequest={seekRequest}
             videoUrl={videoUrl}
           />
 
@@ -169,13 +178,23 @@ function SceneSidebarContent({
                 </p>
                 <div className="grid grid-cols-5 gap-1">
                   {frames.map((frame) => (
-                    <img
-                      alt={`Кадр ${frame.position + 1}`}
-                      className="aspect-video w-full rounded object-cover"
+                    <button
+                      className="group overflow-hidden rounded"
                       key={frame.id}
-                      loading="lazy"
-                      src={frame.image_url ?? getFrameImageUrl(frame.id)}
-                    />
+                      onClick={() => {
+                        const nextSeq = seekSeq + 1;
+                        setSeekSeq(nextSeq);
+                        setSeekRequest({ time: frame.timestamp, seq: nextSeq });
+                      }}
+                      type="button"
+                    >
+                      <img
+                        alt={`Кадр ${frame.position + 1}`}
+                        className="aspect-video w-full rounded object-cover transition group-hover:opacity-90"
+                        loading="lazy"
+                        src={frame.image_url ?? getFrameImageUrl(frame.id)}
+                      />
+                    </button>
                   ))}
                 </div>
               </div>
@@ -201,7 +220,11 @@ function SceneSidebarContent({
             <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
               Транскрипт
             </p>
-            <SceneTranscript transcript={scene.transcript} />
+            <SceneTranscript
+              currentSceneTime={currentSceneTime}
+              sceneStartInMovie={scene.start}
+              transcript={scene.transcript}
+            />
           </div>
         </div>
       </ScrollArea>

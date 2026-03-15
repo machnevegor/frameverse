@@ -4,6 +4,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "#/components/ui/accordion";
+import { Badge } from "#/components/ui/badge";
 import type {
   SceneTranscript as SceneTranscriptType,
   TranscriptSegment,
@@ -12,9 +13,15 @@ import { formatTimestamp } from "#/shared/lib/format";
 
 interface SceneTranscriptProps {
   transcript: SceneTranscriptType;
+  sceneStartInMovie?: number;
+  currentSceneTime?: number;
 }
 
-export function SceneTranscript({ transcript }: SceneTranscriptProps) {
+export function SceneTranscript({
+  transcript,
+  sceneStartInMovie,
+  currentSceneTime,
+}: SceneTranscriptProps) {
   const hasLeft = (transcript.left_segments?.length ?? 0) > 0;
   const hasScene = (transcript.scene_segments?.length ?? 0) > 0;
   const hasRight = (transcript.right_segments?.length ?? 0) > 0;
@@ -26,6 +33,11 @@ export function SceneTranscript({ transcript }: SceneTranscriptProps) {
     );
   }
 
+  const activeTimeInMovie =
+    sceneStartInMovie !== undefined && currentSceneTime !== undefined
+      ? sceneStartInMovie + currentSceneTime
+      : null;
+
   return (
     <div className="rounded-lg border bg-background px-4">
       <Accordion className="w-full" defaultValue={["scene"]} type="multiple">
@@ -35,7 +47,11 @@ export function SceneTranscript({ transcript }: SceneTranscriptProps) {
           </AccordionTrigger>
           <AccordionContent>
             {hasLeft ? (
-              <SegmentGroup muted segments={transcript.left_segments ?? []} />
+              <SegmentGroup
+                activeTimeInMovie={activeTimeInMovie}
+                muted
+                segments={transcript.left_segments ?? []}
+              />
             ) : (
               <p className="text-muted-foreground text-sm">Нет данных</p>
             )}
@@ -46,7 +62,10 @@ export function SceneTranscript({ transcript }: SceneTranscriptProps) {
           <AccordionTrigger>Транскрипт</AccordionTrigger>
           <AccordionContent>
             {hasScene ? (
-              <SegmentGroup segments={transcript.scene_segments ?? []} />
+              <SegmentGroup
+                activeTimeInMovie={activeTimeInMovie}
+                segments={transcript.scene_segments ?? []}
+              />
             ) : (
               <p className="text-muted-foreground text-sm">
                 Транскрипт сцены недоступен
@@ -61,7 +80,11 @@ export function SceneTranscript({ transcript }: SceneTranscriptProps) {
           </AccordionTrigger>
           <AccordionContent>
             {hasRight ? (
-              <SegmentGroup muted segments={transcript.right_segments ?? []} />
+              <SegmentGroup
+                activeTimeInMovie={activeTimeInMovie}
+                muted
+                segments={transcript.right_segments ?? []}
+              />
             ) : (
               <p className="text-muted-foreground text-sm">Нет данных</p>
             )}
@@ -76,33 +99,77 @@ interface SegmentGroupProps {
   segments: TranscriptSegment[];
   label?: string;
   muted?: boolean;
+  activeTimeInMovie?: number | null;
 }
 
-function SegmentGroup({ segments, label, muted }: SegmentGroupProps) {
+function SegmentGroup({
+  segments,
+  label,
+  muted,
+  activeTimeInMovie,
+}: SegmentGroupProps) {
   return (
-    <div>
+    <div className="space-y-2">
       {label && (
         <p className="mb-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
           {label}
         </p>
       )}
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {segments.map((seg) => (
-          <div
-            className={`flex gap-2 text-sm ${muted ? "text-muted-foreground" : ""}`}
+          <TranscriptSegmentRow
+            activeTimeInMovie={activeTimeInMovie}
             key={seg.start}
-          >
-            <span className="mt-0.5 shrink-0 text-muted-foreground text-xs tabular-nums">
-              {formatTimestamp(seg.start)}
-            </span>
-            <div className="min-w-0">
-              {seg.speaker && (
-                <span className="mr-1 font-medium text-xs">{seg.speaker}:</span>
-              )}
-              {seg.text}
-            </div>
-          </div>
+            muted={muted}
+            segment={seg}
+          />
         ))}
+      </div>
+    </div>
+  );
+}
+
+function TranscriptSegmentRow({
+  segment,
+  muted,
+  activeTimeInMovie,
+}: {
+  segment: TranscriptSegment;
+  muted?: boolean;
+  activeTimeInMovie?: number | null;
+}) {
+  const isActive =
+    activeTimeInMovie !== null &&
+    activeTimeInMovie !== undefined &&
+    activeTimeInMovie >= segment.start &&
+    activeTimeInMovie <= segment.end;
+
+  return (
+    <div
+      className={`rounded-md border px-3 py-2 transition-colors ${
+        isActive
+          ? "border-primary/40 bg-primary/10"
+          : muted
+            ? "border-border/60 bg-muted/20"
+            : "border-border bg-background"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 shrink-0 text-muted-foreground text-xs tabular-nums">
+          {formatTimestamp(segment.start)}
+        </span>
+        <div className="min-w-0 space-y-1">
+          {segment.speaker && (
+            <Badge className="h-5 px-1.5 text-[10px]" variant="secondary">
+              {segment.speaker}
+            </Badge>
+          )}
+          <p
+            className={`text-sm leading-relaxed ${muted ? "text-muted-foreground" : ""}`}
+          >
+            {segment.text}
+          </p>
+        </div>
       </div>
     </div>
   );

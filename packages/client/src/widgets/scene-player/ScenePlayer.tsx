@@ -19,6 +19,8 @@ interface ScenePlayerProps {
   onNext?: () => void;
   hasPrev?: boolean;
   hasNext?: boolean;
+  seekRequest?: { time: number; seq: number } | null;
+  onTimeChange?: (time: number) => void;
 }
 
 export function ScenePlayer({
@@ -27,6 +29,8 @@ export function ScenePlayer({
   onNext,
   hasPrev,
   hasNext,
+  seekRequest,
+  onTimeChange,
 }: ScenePlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -50,6 +54,15 @@ export function ScenePlayer({
     });
   }, [videoUrl]);
 
+  useEffect(() => {
+    if (!seekRequest) return;
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = seekRequest.time;
+    setCurrentTime(seekRequest.time);
+    onTimeChange?.(seekRequest.time);
+  }, [onTimeChange, seekRequest]);
+
   function togglePlay() {
     const v = videoRef.current;
     if (!v) return;
@@ -72,7 +85,10 @@ export function ScenePlayer({
 
   function handleTimeUpdate() {
     const v = videoRef.current;
-    if (v) setCurrentTime(v.currentTime);
+    if (v) {
+      setCurrentTime(v.currentTime);
+      onTimeChange?.(v.currentTime);
+    }
   }
 
   function handleSeek(value: number[]) {
@@ -80,6 +96,7 @@ export function ScenePlayer({
     if (!v) return;
     v.currentTime = value[0] ?? 0;
     setCurrentTime(value[0] ?? 0);
+    onTimeChange?.(value[0] ?? 0);
   }
 
   function toggleMute() {
