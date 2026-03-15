@@ -109,12 +109,15 @@ export function MovieTable() {
                 <TableRow
                   className="cursor-pointer"
                   key={row.id}
-                  onClick={() =>
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.closest("a,button,[data-row-action='true']"))
+                      return;
                     void navigate({
                       params: { movieId: row.original.id },
                       to: "/movies/$movieId",
-                    })
-                  }
+                    });
+                  }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>

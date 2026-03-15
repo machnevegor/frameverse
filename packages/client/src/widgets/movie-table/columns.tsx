@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Film, MoreHorizontal } from "lucide-react";
+import { ExternalLink, Film, MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -149,7 +149,9 @@ function MovieActions({ movie }: { movie: Movie }) {
       <DropdownMenu onOpenChange={setMenuOpen} open={menuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
+            data-row-action="true"
             onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             size="icon-sm"
             variant="ghost"
           >
@@ -206,6 +208,40 @@ function MovieActions({ movie }: { movie: Movie }) {
             <>
               <DropdownMenuItem disabled>Открыть</DropdownMenuItem>
               <DropdownMenuItem disabled>Отменить</DropdownMenuItem>
+            </>
+          )}
+
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Ссылки</DropdownMenuLabel>
+          {activeTask ? (
+            <>
+              <DropdownMenuItem asChild>
+                <a
+                  className="flex items-center gap-2"
+                  href={activeTask.temporal_workflow_url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <ExternalLink className="size-3.5" />
+                  Temporal
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a
+                  className="flex items-center gap-2"
+                  href={activeTask.langfuse_trace_url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <ExternalLink className="size-3.5" />
+                  Langfuse
+                </a>
+              </DropdownMenuItem>
+            </>
+          ) : (
+            <>
+              <DropdownMenuItem disabled>Temporal</DropdownMenuItem>
+              <DropdownMenuItem disabled>Langfuse</DropdownMenuItem>
             </>
           )}
         </DropdownMenuContent>

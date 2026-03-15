@@ -109,12 +109,15 @@ export function TaskTable() {
                 <TableRow
                   className="cursor-pointer"
                   key={row.id}
-                  onClick={() =>
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    if (target.closest("a,button,[data-row-action='true']"))
+                      return;
                     void navigate({
                       params: { taskId: row.original.id },
                       to: "/dashboard/tasks/$taskId",
-                    })
-                  }
+                    });
+                  }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>

@@ -100,7 +100,9 @@ function TaskActions({ task }: { task: Task }) {
       <DropdownMenu onOpenChange={setMenuOpen} open={menuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
+            data-row-action="true"
             onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             size="icon-sm"
             variant="ghost"
           >
@@ -109,6 +111,24 @@ function TaskActions({ task }: { task: Task }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Фильм</DropdownMenuLabel>
+          <DropdownMenuItem asChild>
+            <Link params={{ movieId: task.movie_id }} to="/movies/$movieId">
+              Открыть
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+            onSelect={(e) => {
+              e.preventDefault();
+              setMenuOpen(false);
+              setDeleteOpen(true);
+            }}
+          >
+            Удалить
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
           <DropdownMenuLabel>Задача</DropdownMenuLabel>
           <DropdownMenuItem asChild>
             <Link params={{ taskId: task.id }} to="/dashboard/tasks/$taskId">
@@ -129,24 +149,6 @@ function TaskActions({ task }: { task: Task }) {
           ) : (
             <DropdownMenuItem disabled>Отменить</DropdownMenuItem>
           )}
-
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>Фильм</DropdownMenuLabel>
-          <DropdownMenuItem asChild>
-            <Link params={{ movieId: task.movie_id }} to="/movies/$movieId">
-              Открыть
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-            onSelect={(e) => {
-              e.preventDefault();
-              setMenuOpen(false);
-              setDeleteOpen(true);
-            }}
-          >
-            Удалить
-          </DropdownMenuItem>
 
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Ссылки</DropdownMenuLabel>
