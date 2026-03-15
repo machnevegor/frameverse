@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -20,12 +21,12 @@ class KeyframeData:
 class SBEProtocol(Protocol):
     """Contract for SBE adapters."""
 
-    async def extract_clips(
+    def stream_clips(
         self,
         source: str,
         split_times: list[float],
         output_dir: str,
-    ) -> list[Path]: ...
+    ) -> AsyncGenerator[tuple[int, Path], None]: ...
 
     async def extract_keyframes(
         self,
