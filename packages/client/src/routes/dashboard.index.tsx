@@ -9,16 +9,16 @@ export const Route = createFileRoute("/dashboard/")({
 
 function DashboardIndexPage() {
   return (
-    <Tabs defaultValue="tasks">
+    <Tabs defaultValue="movies">
       <TabsList className="mb-4">
-        <TabsTrigger value="tasks">Задачи</TabsTrigger>
         <TabsTrigger value="movies">Фильмы</TabsTrigger>
+        <TabsTrigger value="tasks">Задачи</TabsTrigger>
       </TabsList>
-      <TabsContent value="tasks">
-        <TaskTable />
-      </TabsContent>
       <TabsContent value="movies">
         <MovieTable />
+      </TabsContent>
+      <TabsContent value="tasks">
+        <TaskTable />
       </TabsContent>
     </Tabs>
   );

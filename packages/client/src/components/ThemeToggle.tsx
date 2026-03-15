@@ -30,7 +30,7 @@ export default function ThemeToggle() {
   return (
     <ToggleGroup
       aria-label="Переключение темы"
-      className="rounded-full border border-(--chip-line) bg-(--chip-bg) p-1 shadow-[0_8px_22px_rgba(30,90,72,0.08)] print:hidden"
+      className="rounded-full border border-border bg-background p-1 shadow-[0_8px_22px_rgba(0,0,0,0.04)] print:hidden"
       onValueChange={(value: TernaryDarkMode) => {
         if (value) setTernaryDarkMode(value);
       }}
@@ -41,7 +41,7 @@ export default function ThemeToggle() {
       {MODES.map(({ value, Icon, label }) => (
         <ToggleGroupItem
           aria-label={label}
-          className="size-8 rounded-full px-0 text-(--sea-ink-soft) hover:text-(--sea-ink) data-[state=on]:bg-muted data-[state=on]:text-foreground"
+          className="size-8 rounded-full px-0 text-muted-foreground hover:text-foreground data-[state=on]:bg-muted data-[state=on]:text-foreground"
           key={value}
           value={value}
         >
