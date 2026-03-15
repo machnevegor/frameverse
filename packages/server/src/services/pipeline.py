@@ -224,8 +224,6 @@ class PipelineService:
 
                 transcript_source = movie.transcript or []
                 prepared: dict[int, tuple[str, SceneTranscript, list[tuple[int, float, float, str]]]] = {}
-                clip_paths = await self.sbe.extract_clips(str(source_path), split_times, str(clips_dir))
-
                 semaphore = asyncio.Semaphore(SBE_CONCURRENCY)
 
                 async def _process_clip(scene_idx: int, clip_path: Path) -> None:
@@ -262,10 +260,14 @@ class PipelineService:
                     async with semaphore:
                         await _process_clip(scene_idx, clip_path)
 
-                # Unwrap ExceptionGroup so Temporal sees the actual root cause
+                # Stream clips from ffmpeg and process each as soon as it is ready.
+                # TaskGroup waits for all workers before exiting the block.
+                # Unwrap ExceptionGroup so Temporal sees the actual root cause.
                 try:
                     async with asyncio.TaskGroup() as tg:
-                        for scene_idx, clip_path in enumerate(clip_paths):
+                        async for scene_idx, clip_path in self.sbe.stream_clips(
+                            str(source_path), split_times, str(clips_dir)
+                        ):
                             tg.create_task(_worker(scene_idx, clip_path))
                 except BaseExceptionGroup as eg:
                     first = eg.exceptions[0]
