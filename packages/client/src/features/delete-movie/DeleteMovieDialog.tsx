@@ -11,7 +11,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "#/components/ui/alert-dialog";
 import { movieKeys } from "#/entities/movie/api";
 import { deleteMovie } from "#/shared/api/client";
@@ -19,7 +18,8 @@ import { deleteMovie } from "#/shared/api/client";
 interface DeleteMovieDialogProps {
   movieId: string;
   movieTitle: string;
-  trigger: React.ReactNode;
+  /** Element that opens the dialog when clicked. Receives onClick handler via clone. */
+  trigger: React.ReactElement<{ onClick?: () => void }>;
   onSuccess?: () => void;
 }
 
@@ -50,28 +50,35 @@ export function DeleteMovieDialog({
     },
   });
 
+  const triggerWithHandler = {
+    ...trigger,
+    props: { ...trigger.props, onClick: () => setOpen(true) },
+  };
+
   return (
-    <AlertDialog onOpenChange={setOpen} open={open}>
-      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Удалить фильм?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Фильм «{movieTitle}» и все связанные данные — сцены, кадры,
-            транскрипты, аннотации и векторы — будут удалены безвозвратно.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Назад</AlertDialogCancel>
-          <AlertDialogAction
-            className="bg-destructive text-white hover:bg-destructive/90"
-            disabled={mutation.isPending}
-            onClick={() => mutation.mutate()}
-          >
-            {mutation.isPending ? "Удаление..." : "Удалить"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <>
+      {triggerWithHandler}
+      <AlertDialog onOpenChange={setOpen} open={open}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить фильм?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Фильм «{movieTitle}» и все связанные данные — сцены, кадры,
+              транскрипты, аннотации и векторы — будут удалены безвозвратно.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Назад</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={mutation.isPending}
+              onClick={() => mutation.mutate()}
+              variant="destructive"
+            >
+              {mutation.isPending ? "Удаление..." : "Удалить"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

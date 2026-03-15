@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Film, MoreHorizontal } from "lucide-react";
+import { useState } from "react";
 import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import {
@@ -102,42 +103,47 @@ export const movieColumns: ColumnDef<Movie>[] = [
     header: "",
     cell: ({ row }) => {
       const movie = row.original;
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size="icon-sm" variant="ghost">
-              <MoreHorizontal className="size-4" />
-              <span className="sr-only">Действия</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Фильм</DropdownMenuLabel>
-            <DropdownMenuItem asChild>
-              <Link params={{ movieId: movie.id }} to="/movies/$movieId">
-                Открыть
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="p-0 text-destructive focus:bg-destructive/10 focus:text-destructive"
-              onSelect={(e) => e.preventDefault()}
-            >
-              <DeleteMovieDialog
-                movieId={movie.id}
-                movieTitle={movie.title}
-                trigger={
-                  <button
-                    className="w-full px-2 py-1.5 text-left text-sm"
-                    type="button"
-                  >
-                    Удалить
-                  </button>
-                }
-              />
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      );
+      return <MovieActions movie={movie} />;
     },
   },
 ];
+
+function MovieActions({ movie }: { movie: Movie }) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  return (
+    <DropdownMenu onOpenChange={setDropdownOpen} open={dropdownOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button size="icon-sm" variant="ghost">
+          <MoreHorizontal className="size-4" />
+          <span className="sr-only">Действия</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Фильм</DropdownMenuLabel>
+        <DropdownMenuItem asChild>
+          <Link params={{ movieId: movie.id }} to="/movies/$movieId">
+            Открыть
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DeleteMovieDialog
+          movieId={movie.id}
+          movieTitle={movie.title}
+          onSuccess={() => setDropdownOpen(false)}
+          trigger={
+            <DropdownMenuItem
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+              onSelect={(e) => {
+                e.preventDefault();
+                setDropdownOpen(false);
+              }}
+            >
+              Удалить
+            </DropdownMenuItem>
+          }
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
