@@ -87,7 +87,12 @@ export function MovieTable() {
                   className="cursor-pointer"
                   key={row.id}
                   onClick={(e) => {
-                    if ((e.target as HTMLElement).closest("[data-no-row-click],a,button")) return;
+                    if (
+                      (e.target as HTMLElement).closest(
+                        "[data-no-row-click],a,button",
+                      )
+                    )
+                      return;
                     void navigate({
                       to: "/movies/$movieId",
                       params: { movieId: row.original.id },

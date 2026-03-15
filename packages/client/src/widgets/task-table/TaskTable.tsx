@@ -87,7 +87,12 @@ export function TaskTable() {
                   className="cursor-pointer"
                   key={row.id}
                   onClick={(e) => {
-                    if ((e.target as HTMLElement).closest("[data-no-row-click],a,button")) return;
+                    if (
+                      (e.target as HTMLElement).closest(
+                        "[data-no-row-click],a,button",
+                      )
+                    )
+                      return;
                     void navigate({
                       to: "/dashboard/tasks/$taskId",
                       params: { taskId: row.original.id },
