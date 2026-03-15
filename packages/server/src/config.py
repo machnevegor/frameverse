@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     ann_model: str = Field(alias="ANN_MODEL")
     emb_txt_model: str = Field(alias="EMB_TXT_MODEL")
     emb_img_model: str = Field(alias="EMB_IMG_MODEL")
-    llm_model: str = Field(default="openai/gpt-5.4", alias="LLM_MODEL")
+    llm_model: str = Field(alias="LLM_MODEL")
 
     # Model providers
     assemblyai_api_key: str = Field(alias="ASSEMBLYAI_API_KEY")
