@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import time
+from contextlib import suppress
 from pathlib import Path
 
 import cv2
 import numpy as np
+import structlog
 from scenedetect import ContentDetector, detect
 
 from src.config import SBD_THRESHOLD
 from src.protocols.sbd import DetectedScene, SBDProtocol
-from src.protocols.sbe import ClipExtractionMode, KeyframeData, SBEProtocol
+from src.protocols.sbe import KeyframeData, SBEProtocol, SceneClipMode
+
+logger = structlog.get_logger(__name__)
 
 
 class SceneDetectAdapter(SBDProtocol, SBEProtocol):
@@ -27,7 +32,9 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
             for idx, (start_tc, _) in enumerate(detected)
         ]
 
-    async def list_keyframe_times(self, source: str) -> list[float]:
+    async def list_video_keyframe_times(self, video_path: str) -> list[float]:
+        started_at = time.perf_counter()
+        logger.info("sbe.keyframe_scan.started", video_path=video_path)
         proc = await asyncio.create_subprocess_exec(
             "ffprobe",
             "-v",
@@ -40,13 +47,15 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
             "frame=best_effort_timestamp_time",
             "-of",
             "csv=p=0",
-            source,
+            video_path,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await proc.communicate()
         if proc.returncode != 0:
-            raise RuntimeError(stderr.decode("utf-8", "replace").strip() or "ffprobe keyframe scan failed")
+            error = stderr.decode("utf-8", "replace").strip() or "ffprobe keyframe scan failed"
+            logger.error("sbe.keyframe_scan.failed", video_path=video_path, error=error)
+            raise RuntimeError(error)
 
         values: list[float] = []
         for line in stdout.decode("utf-8", "replace").splitlines():
@@ -56,28 +65,40 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
             values.append(float(value))
 
         if not values:
+            logger.warning(
+                "sbe.keyframe_scan.empty",
+                video_path=video_path,
+                elapsed_ms=round((time.perf_counter() - started_at) * 1000),
+            )
             return []
 
         unique_sorted = sorted({round(value, 6) for value in values})
+        logger.info(
+            "sbe.keyframe_scan.finished",
+            video_path=video_path,
+            keyframes=len(unique_sorted),
+            elapsed_ms=round((time.perf_counter() - started_at) * 1000),
+        )
         return unique_sorted
 
-    async def extract_clip(
+    async def extract_scene_clip(
         self,
-        source: str,
+        video_path: str,
         *,
-        start_time: float,
-        end_time: float,
-        output_path: str,
-        mode: ClipExtractionMode,
+        start_sec: float,
+        end_sec: float,
+        clip_path: str,
+        mode: SceneClipMode,
     ) -> Path:
-        if start_time < 0:
-            raise RuntimeError("start_time must be non-negative")
-        if end_time <= start_time:
-            raise RuntimeError("end_time must be greater than start_time")
+        if start_sec < 0:
+            raise RuntimeError("start_sec must be non-negative")
+        if end_sec <= start_sec:
+            raise RuntimeError("end_sec must be greater than start_sec")
 
-        output = Path(output_path)
+        output = Path(clip_path)
         output.parent.mkdir(parents=True, exist_ok=True)
-        duration = end_time - start_time
+        duration = end_sec - start_sec
+        started_at = time.perf_counter()
 
         common = [
             "ffmpeg",
@@ -87,9 +108,9 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
             "error",
             "-y",
             "-ss",
-            f"{start_time:.6f}",
+            f"{start_sec:.6f}",
             "-i",
-            source,
+            video_path,
             "-t",
             f"{duration:.6f}",
             "-map",
@@ -122,30 +143,88 @@ class SceneDetectAdapter(SBDProtocol, SBEProtocol):
                 str(output),
             ]
 
+        logger.info(
+            "sbe.clip_extract.started",
+            video_path=video_path,
+            clip_path=str(output),
+            mode=mode,
+            start_sec=round(start_sec, 3),
+            end_sec=round(end_sec, 3),
+            duration_sec=round(duration, 3),
+        )
+
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        _, stderr = await proc.communicate()
+        try:
+            _, stderr = await proc.communicate()
+        except asyncio.CancelledError:
+            if proc.returncode is None:
+                proc.terminate()
+                with suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(proc.wait(), timeout=2.0)
+                if proc.returncode is None:
+                    proc.kill()
+                    with suppress(asyncio.TimeoutError):
+                        await asyncio.wait_for(proc.wait(), timeout=2.0)
+            logger.warning(
+                "sbe.clip_extract.cancelled",
+                clip_path=str(output),
+                mode=mode,
+                elapsed_ms=round((time.perf_counter() - started_at) * 1000),
+            )
+            raise
+
         if proc.returncode != 0:
-            raise RuntimeError(stderr.decode("utf-8", "replace").strip() or "ffmpeg clip extraction failed")
+            error = stderr.decode("utf-8", "replace").strip() or "ffmpeg clip extraction failed"
+            logger.error(
+                "sbe.clip_extract.failed",
+                clip_path=str(output),
+                mode=mode,
+                error=error,
+                elapsed_ms=round((time.perf_counter() - started_at) * 1000),
+            )
+            raise RuntimeError(error)
+
+        logger.info(
+            "sbe.clip_extract.finished",
+            clip_path=str(output),
+            mode=mode,
+            elapsed_ms=round((time.perf_counter() - started_at) * 1000),
+        )
         return output
 
-    async def extract_keyframes(
+    async def extract_clip_keyframes(
         self,
         clip_path: str,
         max_keyframes: int,
         min_gap_sec: float,
         min_score_percentile: int,
     ) -> list[KeyframeData]:
-        return await asyncio.to_thread(
+        started_at = time.perf_counter()
+        logger.info(
+            "sbe.keyframe_extract.started",
+            clip_path=clip_path,
+            max_keyframes=max_keyframes,
+            min_gap_sec=min_gap_sec,
+            min_score_percentile=min_score_percentile,
+        )
+        result = await asyncio.to_thread(
             self._extract_keyframes_sync,
             clip_path,
             max_keyframes,
             min_gap_sec,
             min_score_percentile,
         )
+        logger.info(
+            "sbe.keyframe_extract.finished",
+            clip_path=clip_path,
+            extracted_keyframes=len(result),
+            elapsed_ms=round((time.perf_counter() - started_at) * 1000),
+        )
+        return result
 
     def _extract_keyframes_sync(
         self,

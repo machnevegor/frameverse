@@ -27,7 +27,7 @@ from src.config import (
     SBE_KEYFRAME_ALIGNMENT_TOLERANCE_SEC,
     SBE_REENCODE_CONCURRENCY,
 )
-from src.db.models import MovieModel
+from src.db.models import MovieModel, SceneModel
 from src.domain import (
     Progress,
     SceneAnnotation,
@@ -38,7 +38,7 @@ from src.protocols.ann import ANNProtocol
 from src.protocols.asr import ASRProtocol
 from src.protocols.emb import EMBProtocol
 from src.protocols.sbd import SBDProtocol
-from src.protocols.sbe import ClipExtractionMode, SBEProtocol
+from src.protocols.sbe import SBEProtocol, SceneClipMode
 from src.protocols.storage import StorageProtocol
 from src.services.frame import FrameService
 from src.services.movie import MovieService
@@ -51,23 +51,33 @@ logger = structlog.get_logger(__name__)
 @dataclass(slots=True, frozen=True)
 class SceneMaterializationPlan:
     scene_id: UUID
-    position: int
-    start_time: float
-    end_time: float
+    scene_position: int
+    scene_start_sec: float
+    scene_end_sec: float
     clip_path: Path
-    clip_mode: ClipExtractionMode
+    clip_mode: SceneClipMode
     scene_prefix: str
 
 
 @dataclass(slots=True, frozen=True)
-class SceneVideoUploadedEvent:
+class SceneClipExtractedEvent:
     scene_id: UUID
+    scene_position: int
+    clip_mode: SceneClipMode
+
+
+@dataclass(slots=True, frozen=True)
+class SceneClipUploadedEvent:
+    scene_id: UUID
+    scene_position: int
+    clip_mode: SceneClipMode
     video_key: str
 
 
 @dataclass(slots=True, frozen=True)
-class SceneArtifactsReadyEvent:
+class SceneMaterializedEvent:
     scene_id: UUID
+    scene_position: int
     transcript: dict
     frame_rows: list[tuple[int, float, float, str]]
 
@@ -208,6 +218,8 @@ class PipelineService:
                 Progress(
                     scenes_detected=len(scene_ids),
                     scenes_extracted=0,
+                    scenes_uploaded=0,
+                    scenes_materialized=0,
                     scenes_annotated=0,
                     scenes_embedded=0,
                 ),
@@ -242,21 +254,28 @@ class PipelineService:
                 clips_dir = tmp_path / "clips"
                 clips_dir.mkdir()
                 source_path.write_bytes(await self.storage.download(movie.video_s3_key))
-                keyframe_times = await self.sbe.list_keyframe_times(str(source_path))
+                keyframe_times = await self.sbe.list_video_keyframe_times(str(source_path))
                 plans = self._build_scene_materialization_plans(movie.id, scenes, clips_dir, keyframe_times)
                 copy_count = sum(1 for plan in plans if plan.clip_mode == "copy")
                 reencode_count = len(plans) - copy_count
 
                 logger.info(
                     "materialize_scenes started",
+                    task_id=str(task_id),
+                    movie_id=str(movie.id),
                     scenes=len(scenes),
                     source_keyframes=len(keyframe_times),
                     copy_scenes=copy_count,
                     reencode_scenes=reencode_count,
+                    copy_concurrency=SBE_COPY_CONCURRENCY,
+                    reencode_concurrency=SBE_REENCODE_CONCURRENCY,
+                    keyframes_concurrency=KEYFRAMES_CONCURRENCY,
                 )
 
                 transcript_source = movie.transcript or []
-                persist_queue: asyncio.Queue[SceneVideoUploadedEvent | SceneArtifactsReadyEvent] = asyncio.Queue()
+                persist_queue: asyncio.Queue[
+                    SceneClipExtractedEvent | SceneClipUploadedEvent | SceneMaterializedEvent
+                ] = asyncio.Queue()
                 workers_done = asyncio.Event()
                 copy_semaphore = asyncio.Semaphore(SBE_COPY_CONCURRENCY)
                 reencode_semaphore = asyncio.Semaphore(SBE_REENCODE_CONCURRENCY)
@@ -285,7 +304,7 @@ class PipelineService:
                         tg.create_task(
                             self._persist_materialization_events(
                                 task_id=task_id,
-                                movie_id=movie.id,
+                                total_scenes=len(plans),
                                 persist_queue=persist_queue,
                                 workers_done=workers_done,
                             )
@@ -425,21 +444,21 @@ class PipelineService:
     def _build_scene_materialization_plans(
         self,
         movie_id: UUID,
-        scenes: list,
+        scenes: list[SceneModel],
         clips_dir: Path,
         keyframe_times: list[float],
     ) -> list[SceneMaterializationPlan]:
         plans: list[SceneMaterializationPlan] = []
         for scene in scenes:
-            mode: ClipExtractionMode = (
+            mode: SceneClipMode = (
                 "copy" if self._is_keyframe_aligned(float(scene.start), keyframe_times) else "reencode"
             )
             plans.append(
                 SceneMaterializationPlan(
                     scene_id=scene.id,
-                    position=int(scene.position),
-                    start_time=float(scene.start),
-                    end_time=float(scene.end),
+                    scene_position=int(scene.position),
+                    scene_start_sec=float(scene.start),
+                    scene_end_sec=float(scene.end),
                     clip_path=clips_dir / f"{int(scene.position):06d}.mp4",
                     clip_mode=mode,
                     scene_prefix=f"movies/{movie_id}/scenes/{scene.id}",
@@ -453,7 +472,7 @@ class PipelineService:
         *,
         source_path: Path,
         transcript_source: list[dict],
-        persist_queue: asyncio.Queue[SceneVideoUploadedEvent | SceneArtifactsReadyEvent],
+        persist_queue: asyncio.Queue[SceneClipExtractedEvent | SceneClipUploadedEvent | SceneMaterializedEvent],
         copy_semaphore: asyncio.Semaphore,
         reencode_semaphore: asyncio.Semaphore,
         keyframes_semaphore: asyncio.Semaphore,
@@ -464,33 +483,61 @@ class PipelineService:
         logger.info(
             "scene materialization started",
             scene_id=str(plan.scene_id),
-            position=plan.position,
-            mode=plan.clip_mode,
+            scene_position=plan.scene_position,
+            clip_mode=plan.clip_mode,
         )
 
         clip_path = plan.clip_path
         async with clip_semaphore:
-            clip_path = await self.sbe.extract_clip(
+            clip_path = await self.sbe.extract_scene_clip(
                 str(source_path),
-                start_time=plan.start_time,
-                end_time=plan.end_time,
-                output_path=str(plan.clip_path),
+                start_sec=plan.scene_start_sec,
+                end_sec=plan.scene_end_sec,
+                clip_path=str(plan.clip_path),
                 mode=plan.clip_mode,
             )
+        await persist_queue.put(
+            SceneClipExtractedEvent(
+                scene_id=plan.scene_id,
+                scene_position=plan.scene_position,
+                clip_mode=plan.clip_mode,
+            )
+        )
 
         try:
             await self.storage.delete_prefix(f"{plan.scene_prefix}/")
             await self.storage.upload_file(scene_video_key, str(clip_path), "video/mp4")
-            await persist_queue.put(SceneVideoUploadedEvent(scene_id=plan.scene_id, video_key=scene_video_key))
+            logger.info(
+                "scene video uploaded",
+                scene_id=str(plan.scene_id),
+                scene_position=plan.scene_position,
+                clip_mode=plan.clip_mode,
+                video_key=scene_video_key,
+            )
+            await persist_queue.put(
+                SceneClipUploadedEvent(
+                    scene_id=plan.scene_id,
+                    scene_position=plan.scene_position,
+                    clip_mode=plan.clip_mode,
+                    video_key=scene_video_key,
+                )
+            )
 
             async with keyframes_semaphore:
-                keyframes = await self.sbe.extract_keyframes(
+                keyframes = await self.sbe.extract_clip_keyframes(
                     str(clip_path),
                     max_keyframes=KEYFRAMES_PER_SCENE,
                     min_gap_sec=KEYFRAMES_MIN_GAP_SEC,
                     min_score_percentile=KEYFRAMES_MIN_SCORE_PERCENTILE,
                 )
 
+            logger.info(
+                "scene keyframes extracted",
+                scene_id=str(plan.scene_id),
+                scene_position=plan.scene_position,
+                clip_mode=plan.clip_mode,
+                keyframes=len(keyframes),
+            )
             frame_rows: list[tuple[int, float, float, str]] = []
             for position, keyframe in enumerate(keyframes):
                 frame_key = f"{plan.scene_prefix}/frames/{position:06d}.jpg"
@@ -499,12 +546,13 @@ class PipelineService:
 
             scene_transcript = self._slice_transcript(
                 transcript_source,
-                scene_start=plan.start_time,
-                scene_end=plan.end_time,
+                scene_start=plan.scene_start_sec,
+                scene_end=plan.scene_end_sec,
             )
             await persist_queue.put(
-                SceneArtifactsReadyEvent(
+                SceneMaterializedEvent(
                     scene_id=plan.scene_id,
+                    scene_position=plan.scene_position,
                     transcript=scene_transcript.model_dump(mode="json"),
                     frame_rows=frame_rows,
                 )
@@ -512,8 +560,8 @@ class PipelineService:
             logger.info(
                 "scene materialization finished",
                 scene_id=str(plan.scene_id),
-                position=plan.position,
-                mode=plan.clip_mode,
+                scene_position=plan.scene_position,
+                clip_mode=plan.clip_mode,
                 keyframes=len(frame_rows),
             )
         finally:
@@ -523,12 +571,23 @@ class PipelineService:
         self,
         *,
         task_id: UUID,
-        movie_id: UUID,
-        persist_queue: asyncio.Queue[SceneVideoUploadedEvent | SceneArtifactsReadyEvent],
+        total_scenes: int,
+        persist_queue: asyncio.Queue[SceneClipExtractedEvent | SceneClipUploadedEvent | SceneMaterializedEvent],
         workers_done: asyncio.Event,
     ) -> None:
+        clipped_persisted = 0
+        uploaded_persisted = 0
+        materialized_persisted = 0
         while True:
             if workers_done.is_set() and persist_queue.empty():
+                logger.info(
+                    "materialize_scenes persistence finished",
+                    task_id=str(task_id),
+                    total_scenes=total_scenes,
+                    clipped_persisted=clipped_persisted,
+                    uploaded_persisted=uploaded_persisted,
+                    materialized_persisted=materialized_persisted,
+                )
                 return
 
             try:
@@ -537,29 +596,85 @@ class PipelineService:
                 continue
 
             try:
-                if isinstance(event, SceneVideoUploadedEvent):
+                if isinstance(event, SceneClipExtractedEvent):
+                    await self._persist_scene_clip_extracted(task_id, event)
+                    clipped_persisted += 1
+                    logger.info(
+                        "materialize_scenes progress",
+                        task_id=str(task_id),
+                        stage="clip_extracted_persisted",
+                        clipped_progress=f"{clipped_persisted}/{total_scenes}",
+                        uploaded_progress=f"{uploaded_persisted}/{total_scenes}",
+                        materialized_progress=f"{materialized_persisted}/{total_scenes}",
+                        scene_id=str(event.scene_id),
+                        scene_position=event.scene_position,
+                        clip_mode=event.clip_mode,
+                        queue_size=persist_queue.qsize(),
+                    )
+                elif isinstance(event, SceneClipUploadedEvent):
                     await self._persist_scene_video_upload(task_id, event)
+                    uploaded_persisted += 1
+                    logger.info(
+                        "materialize_scenes progress",
+                        task_id=str(task_id),
+                        stage="clip_uploaded_persisted",
+                        clipped_progress=f"{clipped_persisted}/{total_scenes}",
+                        uploaded_progress=f"{uploaded_persisted}/{total_scenes}",
+                        materialized_progress=f"{materialized_persisted}/{total_scenes}",
+                        scene_id=str(event.scene_id),
+                        scene_position=event.scene_position,
+                        clip_mode=event.clip_mode,
+                        queue_size=persist_queue.qsize(),
+                    )
                 else:
-                    await self._persist_scene_artifacts(movie_id, event)
+                    await self._persist_scene_materialization(task_id, event)
+                    materialized_persisted += 1
+                    logger.info(
+                        "materialize_scenes progress",
+                        task_id=str(task_id),
+                        stage="scene_materialized_persisted",
+                        clipped_progress=f"{clipped_persisted}/{total_scenes}",
+                        uploaded_progress=f"{uploaded_persisted}/{total_scenes}",
+                        materialized_progress=f"{materialized_persisted}/{total_scenes}",
+                        scene_id=str(event.scene_id),
+                        scene_position=event.scene_position,
+                        queue_size=persist_queue.qsize(),
+                    )
             except Exception:
                 await self.session.rollback()
                 raise
             finally:
                 persist_queue.task_done()
 
-    async def _persist_scene_video_upload(self, task_id: UUID, event: SceneVideoUploadedEvent) -> None:
-        scene = await self._get_scene(event.scene_id)
-        scene.video_s3_key = event.video_key
+    async def _persist_scene_clip_extracted(self, task_id: UUID, event: SceneClipExtractedEvent) -> None:
         await self.task_service.increment_progress(task_id, "scenes_extracted")
         await self.session.commit()
-        logger.info("scene video persisted", scene_id=str(event.scene_id), video_key=event.video_key)
+        logger.info(
+            "scene clip extracted persisted",
+            scene_id=str(event.scene_id),
+            scene_position=event.scene_position,
+            clip_mode=event.clip_mode,
+        )
 
-    async def _persist_scene_artifacts(self, movie_id: UUID, event: SceneArtifactsReadyEvent) -> None:
+    async def _persist_scene_video_upload(self, task_id: UUID, event: SceneClipUploadedEvent) -> None:
+        scene = await self._get_scene(event.scene_id)
+        scene.video_s3_key = event.video_key
+        await self.task_service.increment_progress(task_id, "scenes_uploaded")
+        await self.session.commit()
+        logger.info(
+            "scene video persisted",
+            scene_id=str(event.scene_id),
+            scene_position=event.scene_position,
+            clip_mode=event.clip_mode,
+            video_key=event.video_key,
+        )
+
+    async def _persist_scene_materialization(self, task_id: UUID, event: SceneMaterializedEvent) -> None:
         scene = await self._get_scene(event.scene_id)
         await self.frame_service.delete_by_scene(scene.id)
         for position, timestamp, score, frame_key in event.frame_rows:
             await self.frame_service.create(
-                movie_id=movie_id,
+                movie_id=scene.movie_id,
                 scene_id=scene.id,
                 position=position,
                 timestamp=timestamp,
@@ -567,8 +682,14 @@ class PipelineService:
                 image_s3_key=frame_key,
             )
         scene.transcript = event.transcript
+        await self.task_service.increment_progress(task_id, "scenes_materialized")
         await self.session.commit()
-        logger.info("scene artifacts persisted", scene_id=str(event.scene_id), frames=len(event.frame_rows))
+        logger.info(
+            "scene materialization persisted",
+            scene_id=str(event.scene_id),
+            scene_position=event.scene_position,
+            frames=len(event.frame_rows),
+        )
 
     async def _get_task(self, task_id: UUID):
         task = await self.task_service.get(task_id)

@@ -16,6 +16,8 @@ from src.domain import NonTerminalMovieStatus, Progress
 _PROGRESS_FIELDS = {
     "scenes_detected",
     "scenes_extracted",
+    "scenes_uploaded",
+    "scenes_materialized",
     "scenes_annotated",
     "scenes_embedded",
 }

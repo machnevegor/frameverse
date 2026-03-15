@@ -16,31 +16,29 @@ class KeyframeData:
     image_data: bytes
 
 
-ClipExtractionMode = Literal["copy", "reencode"]
+SceneClipMode = Literal["copy", "reencode"]
 
 
 @runtime_checkable
 class SBEProtocol(Protocol):
     """Contract for SBE adapters."""
 
-    async def list_keyframe_times(
+    async def list_video_keyframe_times(
         self,
-        source: str,
-    ) -> list[float]:
-        """Return timestamps of keyframes for the primary video stream."""
+        video_path: str,
+    ) -> list[float]: ...
 
-    async def extract_clip(
+    async def extract_scene_clip(
         self,
-        source: str,
+        video_path: str,
         *,
-        start_time: float,
-        end_time: float,
-        output_path: str,
-        mode: ClipExtractionMode,
-    ) -> Path:
-        """Extract one scene clip and return the produced file path."""
+        start_sec: float,
+        end_sec: float,
+        clip_path: str,
+        mode: SceneClipMode,
+    ) -> Path: ...
 
-    async def extract_keyframes(
+    async def extract_clip_keyframes(
         self,
         clip_path: str,
         max_keyframes: int,

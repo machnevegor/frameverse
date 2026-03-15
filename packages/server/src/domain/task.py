@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, HttpUrl
 
 from src.domain.status import MovieStatus, TaskErrorCode
 
@@ -14,7 +14,22 @@ class Progress(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     scenes_detected: int = Field(..., description="Number of scenes detected.", ge=0)
-    scenes_extracted: int = Field(0, description="Number of scenes with extracted video clips.", ge=0)
+    scenes_extracted: int = Field(
+        0,
+        description="Number of scenes whose clips were extracted from the source video.",
+        ge=0,
+    )
+    scenes_uploaded: int = Field(
+        0,
+        description="Number of scenes whose clips were uploaded to object storage.",
+        ge=0,
+        validation_alias=AliasChoices("scenes_uploaded", "scenes_videos_uploaded"),
+    )
+    scenes_materialized: int = Field(
+        0,
+        description="Number of scenes with persisted transcript and keyframes.",
+        ge=0,
+    )
     scenes_annotated: int = Field(0, description="Number of scenes with completed annotations.", ge=0)
     scenes_embedded: int = Field(0, description="Number of scenes with completed embeddings.", ge=0)
 
