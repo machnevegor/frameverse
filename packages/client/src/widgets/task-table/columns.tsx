@@ -95,6 +95,26 @@ function TaskActions({ task }: { task: Task }) {
     onError: () => toast.error("Не удалось отменить задачу"),
   });
 
+  function handleOpenDelete(e: {
+    preventDefault: () => void;
+    stopPropagation: () => void;
+  }) {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuOpen(false);
+    setTimeout(() => setDeleteOpen(true), 0);
+  }
+
+  function handleOpenCancel(e: {
+    preventDefault: () => void;
+    stopPropagation: () => void;
+  }) {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuOpen(false);
+    setTimeout(() => setCancelOpen(true), 0);
+  }
+
   return (
     <>
       <DropdownMenu onOpenChange={setMenuOpen} open={menuOpen}>
@@ -119,11 +139,9 @@ function TaskActions({ task }: { task: Task }) {
           </DropdownMenuItem>
           <DropdownMenuItem
             className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-            onSelect={(e) => {
-              e.preventDefault();
-              setMenuOpen(false);
-              setDeleteOpen(true);
-            }}
+            onClick={handleOpenDelete}
+            onPointerDown={handleOpenDelete}
+            onSelect={handleOpenDelete}
           >
             Удалить
           </DropdownMenuItem>
@@ -138,11 +156,9 @@ function TaskActions({ task }: { task: Task }) {
           {isNonTerminalStatus(task.status) ? (
             <DropdownMenuItem
               className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-              onSelect={(e) => {
-                e.preventDefault();
-                setMenuOpen(false);
-                setCancelOpen(true);
-              }}
+              onClick={handleOpenCancel}
+              onPointerDown={handleOpenCancel}
+              onSelect={handleOpenCancel}
             >
               Отменить
             </DropdownMenuItem>

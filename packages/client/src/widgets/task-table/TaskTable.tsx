@@ -110,6 +110,7 @@ export function TaskTable() {
                   className="cursor-pointer"
                   key={row.id}
                   onClick={(e) => {
+                    if (e.defaultPrevented) return;
                     const target = e.target as HTMLElement;
                     if (target.closest("a,button,[data-row-action='true']"))
                       return;
