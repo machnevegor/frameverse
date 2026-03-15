@@ -10,33 +10,21 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { NuqsAdapter } from "nuqs/adapters/tanstack-router";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
+import { Toaster } from "../components/ui/sonner";
+import { TooltipProvider } from "../components/ui/tooltip";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   {
     head: () => ({
       meta: [
-        {
-          charSet: "utf-8",
-        },
-        {
-          name: "viewport",
-          content: "width=device-width, initial-scale=1",
-        },
-        {
-          title: "фрейм вёрс",
-        },
+        { charSet: "utf-8" },
+        { name: "viewport", content: "width=device-width, initial-scale=1" },
+        { title: "фрейм вёрс" },
       ],
       links: [
-        {
-          rel: "icon",
-          type: "image/svg+xml",
-          href: "/favicon.svg",
-        },
-        {
-          rel: "stylesheet",
-          href: appCss,
-        },
+        { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+        { rel: "stylesheet", href: appCss },
       ],
     }),
     shellComponent: RootDocument,
@@ -58,24 +46,21 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body className="wrap-anywhere font-sans antialiased selection:bg-[rgba(79,184,178,0.24)]">
-        <NuqsAdapter>
-          <Header />
-          {children}
-          <Footer />
-        </NuqsAdapter>
+        <TooltipProvider>
+          <NuqsAdapter>
+            <div className="flex min-h-screen flex-col">
+              <Header />
+              <div className="flex-1">{children}</div>
+              <Footer />
+            </div>
+          </NuqsAdapter>
+        </TooltipProvider>
+        <Toaster />
         <TanStackDevtools
-          config={{
-            position: "bottom-left",
-          }}
+          config={{ position: "bottom-left" }}
           plugins={[
-            {
-              name: "Tanstack Router",
-              render: <TanStackRouterDevtoolsPanel />,
-            },
-            {
-              name: "Tanstack Query",
-              render: <ReactQueryDevtoolsPanel />,
-            },
+            { name: "Router", render: <TanStackRouterDevtoolsPanel /> },
+            { name: "Query", render: <ReactQueryDevtoolsPanel /> },
           ]}
         />
         <Scripts />

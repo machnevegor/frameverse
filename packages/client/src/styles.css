@@ -124,3 +124,24 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes shiny-sweep {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+@layer utilities {
+  .animate-shiny {
+    animation: shiny-sweep linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-shiny {
+      animation: none;
+    }
+  }
+}
