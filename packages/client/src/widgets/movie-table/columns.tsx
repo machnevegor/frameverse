@@ -37,13 +37,11 @@ export const movieColumns: ColumnDef<Movie>[] = [
   {
     id: "poster",
     header: "",
-    size: 56,
-    minSize: 56,
     cell: ({ row }) => {
       const movie = row.original;
       if (!movie.poster_url) {
         return (
-          <div className="flex h-14 w-10 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+          <div className="flex aspect-3/4 w-10 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
             <Film className="size-3.5" />
           </div>
         );
@@ -51,7 +49,7 @@ export const movieColumns: ColumnDef<Movie>[] = [
       return (
         <img
           alt=""
-          className="h-14 w-10 shrink-0 rounded object-cover"
+          className="aspect-3/4 w-10 shrink-0 rounded object-cover"
           src={movie.poster_url}
         />
       );
