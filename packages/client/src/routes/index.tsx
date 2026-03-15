@@ -5,7 +5,10 @@ import { parseAsString, useQueryState } from "nuqs";
 import { SearchBar } from "#/features/search-scenes/SearchBar";
 import { SearchResults } from "#/features/search-scenes/SearchResults";
 import { searchScenes } from "#/shared/api/client";
-import { SEARCH_SCENES_LIMIT } from "#/shared/config/constants";
+import {
+  SEARCH_SCENES_LIMIT,
+  SEARCH_SCENES_SCORE_THRESHOLD,
+} from "#/shared/config/constants";
 import { FrameverseLogo } from "#/shared/ui/FrameverseLogo";
 import { ShinyText } from "#/shared/ui/ShinyText";
 import { SceneSidebar } from "#/widgets/scene-sidebar/SceneSidebar";
@@ -78,6 +81,9 @@ export const Route = createFileRoute("/")({ component: HomePage });
 function HomePage() {
   const [q] = useQueryState("q", parseAsString.withDefault(""));
   const { data: hits, isFetching } = useQuery(searchScenesQueryOptions(q));
+  const filteredHits = (hits ?? []).filter(
+    (hit) => hit.score * 100 >= SEARCH_SCENES_SCORE_THRESHOLD,
+  );
 
   const hasQuery = q.trim().length > 0;
 
@@ -89,7 +95,7 @@ function HomePage() {
             <div className="py-6">
               <SearchBar compact isLoading={isFetching} />
             </div>
-            <SearchResults hits={hits ?? []} isLoading={isFetching} />
+            <SearchResults hits={filteredHits} isLoading={isFetching} />
           </>
         ) : (
           <motion.div
@@ -140,7 +146,7 @@ function HomePage() {
         )}
       </div>
 
-      {hits && hits.length > 0 && <SceneSidebar scenes={hits} />}
+      {filteredHits.length > 0 && <SceneSidebar scenes={filteredHits} />}
     </main>
   );
 }
