@@ -29,8 +29,8 @@ export const taskColumns: ColumnDef<Task>[] = [
     cell: ({ row }) => (
       <Link
         className="font-medium underline-offset-4 hover:underline"
-        params={{ movieId: row.original.movie_id }}
-        to="/movies/$movieId"
+        params={{ taskId: row.original.id }}
+        to="/dashboard/tasks/$taskId"
       >
         {row.original.movie_title}
       </Link>
@@ -60,7 +60,7 @@ export const taskColumns: ColumnDef<Task>[] = [
     cell: ({ row }) => {
       const task = row.original;
       return (
-        <div className="flex items-center justify-end gap-1" data-no-row-click>
+        <div className="flex items-center justify-end gap-1">
           {isNonTerminalStatus(task.status) && (
             <CancelTaskButton status={task.status} taskId={task.id} />
           )}
@@ -78,7 +78,12 @@ export const taskColumns: ColumnDef<Task>[] = [
                   params={{ taskId: task.id }}
                   to="/dashboard/tasks/$taskId"
                 >
-                  Открыть детали
+                  Детали задачи
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link params={{ movieId: task.movie_id }} to="/movies/$movieId">
+                  Страница фильма
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />

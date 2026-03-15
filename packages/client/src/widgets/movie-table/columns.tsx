@@ -101,14 +101,7 @@ export const movieColumns: ColumnDef<Movie>[] = [
   {
     id: "actions",
     header: "",
-    cell: ({ row }) => {
-      const movie = row.original;
-      return (
-        <div data-no-row-click>
-          <MovieActions movie={movie} />
-        </div>
-      );
-    },
+    cell: ({ row }) => <MovieActions movie={row.original} />,
   },
 ];
 
