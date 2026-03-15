@@ -123,6 +123,28 @@ function SceneSidebarContent({
             <span className="ml-2">({formatTimestamp(scene.duration)})</span>
           </p>
 
+          {frames && frames.length > 0 && (
+            <>
+              <Separator />
+              <div>
+                <p className="mb-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
+                  Ключевые кадры ({frames.length})
+                </p>
+                <div className="grid grid-cols-5 gap-1">
+                  {frames.map((frame) => (
+                    <img
+                      alt={`Кадр ${frame.position + 1}`}
+                      className="aspect-video w-full rounded object-cover"
+                      key={frame.id}
+                      loading="lazy"
+                      src={frame.image_url ?? getFrameImageUrl(frame.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
           <Separator />
           <div className="space-y-2">
             <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
@@ -144,28 +166,6 @@ function SceneSidebarContent({
             </p>
             <SceneTranscript transcript={scene.transcript} />
           </div>
-
-          {frames && frames.length > 0 && (
-            <>
-              <Separator />
-              <div>
-                <p className="mb-2 font-medium text-muted-foreground text-xs uppercase tracking-wide">
-                  Ключевые кадры ({frames.length})
-                </p>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {frames.map((frame) => (
-                    <img
-                      alt={`Кадр ${frame.position + 1}`}
-                      className="aspect-video w-full rounded object-cover"
-                      key={frame.id}
-                      loading="lazy"
-                      src={frame.image_url ?? getFrameImageUrl(frame.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
         </div>
       </ScrollArea>
 

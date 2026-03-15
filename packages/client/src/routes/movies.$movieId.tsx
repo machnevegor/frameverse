@@ -48,6 +48,17 @@ function MoviePage() {
   const start = (page - 1) * SCENES_PER_PAGE;
   const paginatedScenes = scenes?.slice(start, start + SCENES_PER_PAGE) ?? [];
 
+  // When a scene is opened, jump to the page that contains it
+  useEffect(() => {
+    if (!selectedSceneId || !scenes) return;
+    const idx = scenes.findIndex((s) => s.id === selectedSceneId);
+    if (idx < 0) return;
+    const targetPage = Math.floor(idx / SCENES_PER_PAGE) + 1;
+    if (targetPage !== scenePage) {
+      void setScenePage(targetPage <= 1 ? null : targetPage);
+    }
+  }, [selectedSceneId, scenes, scenePage, setScenePage]);
+
   return (
     <main className="py-8 content-container">
       {/* Movie details */}
@@ -176,6 +187,13 @@ function LazySceneCard({
     io.observe(el);
     return () => io.disconnect();
   }, []);
+
+  // Scroll active card into view when it becomes active (e.g. after page jump)
+  useEffect(() => {
+    if (active && ref.current) {
+      ref.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [active]);
 
   return (
     <div ref={ref}>
