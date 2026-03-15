@@ -21,6 +21,9 @@ from src.api.controllers._mappers import to_frame, to_scene
 from src.config import (
     PRESIGNED_URL_TTL_SEC,
     SEARCH_CANDIDATES_PER_CHANNEL,
+    SEARCH_IMAGE_THRESHOLD,
+    SEARCH_LLM_MAX_IMAGES,
+    SEARCH_LLM_MAX_SCENES,
     SEARCH_LLM_MAX_TOKENS,
     SEARCH_MAX_LLM_ITERATIONS,
     SEARCH_MAX_MOVIE_GROUPS,
@@ -335,12 +338,28 @@ class SearchService:
         """Render YAML scene descriptions + labeled frames for multimodal tool result."""
         content: list[dict[str, Any]] = []
 
-        # filter out weak candidates — at least one channel must meet SEARCH_SCORE_THRESHOLD
-        above = [n for n in new_numbers if self._max_similarity(self._candidates[n]) >= SEARCH_SCORE_THRESHOLD]
+        # filter: at least one channel must meet SEARCH_SCORE_THRESHOLD; cap at SEARCH_LLM_MAX_SCENES
+        above = [n for n in new_numbers if self._max_similarity(self._candidates[n]) >= SEARCH_SCORE_THRESHOLD][
+            :SEARCH_LLM_MAX_SCENES
+        ]
 
         if not above:
             content.append({"type": "text", "text": "Новых релевантных сцен не найдено. Попробуй другой запрос."})
             return content
+
+        # decide which scenes qualify for a screenshot (image similarity >= SEARCH_IMAGE_THRESHOLD)
+        # and cap total images at SEARCH_LLM_MAX_IMAGES
+        image_quota = SEARCH_LLM_MAX_IMAGES
+        scene_to_image_idx: dict[int, int] = {}
+        image_counter = 1
+        for num in above:
+            c = self._candidates[num]
+            if image_quota > 0 and c.frame_url and c.image_distance is not None:
+                img_score = max(0.0, min(1.0, 1.0 - c.image_distance / 2.0))
+                if img_score >= SEARCH_IMAGE_THRESHOLD:
+                    scene_to_image_idx[num] = image_counter
+                    image_counter += 1
+                    image_quota -= 1
 
         scenes_data: dict[str, Any] = {}
         for num in above:
@@ -354,23 +373,26 @@ class SearchService:
             ]:
                 if dist is not None:
                     match_scores[label] = round(max(0.0, min(1.0, 1.0 - dist / 2.0)), 2)
-            scenes_data[f"Сцена #{num}"] = {
+            entry: dict[str, Any] = {
                 "фильм": movie_label,
                 "транскрипт": _transcript_text(c.scene),
                 "аннотация": (c.scene.annotation or {}).get("text", "(нет)"),
                 "совпадения": match_scores,
             }
+            # reference the screenshot index so LLM can correlate text and image
+            if num in scene_to_image_idx:
+                entry["скриншот"] = f"изображение #{scene_to_image_idx[num]}"
+            scenes_data[f"Сцена #{num}"] = entry
 
         yaml_text = yaml.dump(scenes_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
         content.append({"type": "text", "text": f"Найдено {len(above)} новых сцен:\n\n{yaml_text}"})
 
-        # labeled frames for vision inspection — only new scenes to avoid re-sending known images
-        for num in above:
+        # attach screenshots only for scenes that passed the image threshold
+        for num, img_idx in scene_to_image_idx.items():
             c = self._candidates[num]
-            if c.frame_url:
-                movie_label = c.movie_title + (f" ({c.movie_year})" if c.movie_year else "")
-                content.append({"type": "text", "text": f"Кадр сцены #{num}, фильм «{movie_label}»"})
-                content.append({"type": "image_url", "image_url": {"url": c.frame_url, "detail": "low"}})
+            movie_label = c.movie_title + (f" ({c.movie_year})" if c.movie_year else "")
+            content.append({"type": "text", "text": f"Изображение #{img_idx} — сцена #{num}, фильм «{movie_label}»"})
+            content.append({"type": "image_url", "image_url": {"url": c.frame_url, "detail": "low"}})
 
         return content
 
