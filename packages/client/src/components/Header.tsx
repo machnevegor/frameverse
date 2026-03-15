@@ -1,13 +1,18 @@
 "use client";
 
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import ThemeToggle from "./ThemeToggle";
 
 export default function Header() {
+  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   const isHome = pathname === "/";
   const isDashboard = pathname.startsWith("/dashboard");
+
+  function goHome() {
+    void navigate({ search: {}, to: "/" });
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/80 px-4 text-muted-foreground backdrop-blur-md">
@@ -16,11 +21,14 @@ export default function Header() {
         Mobile:        row 1: logo + theme  |  row 2: nav (full width)
       */}
       <div className="page-wrap grid grid-cols-[1fr_auto] items-center gap-x-3 py-3 sm:grid-cols-[1fr_auto_1fr] sm:py-4">
-        {/* Col 1 — Logo (both) */}
+        {/* Col 1 — Logo (both): always navigate to / with no search so hero shows */}
         <div className="flex items-center">
           <Link
             className="inline-flex items-center rounded-full border border-border bg-background px-3 py-1.5 font-medium text-foreground text-sm no-underline shadow-[0_8px_22px_rgba(0,0,0,0.04)] transition hover:border-foreground/25"
-            search={(prev) => ({ ...prev, q: undefined })}
+            onClick={(e) => {
+              e.preventDefault();
+              goHome();
+            }}
             to="/"
           >
             фрейм вёрс

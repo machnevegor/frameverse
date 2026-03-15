@@ -84,6 +84,10 @@ function HomePage() {
     }
   }, [q, search]);
 
+  useEffect(() => {
+    if (!q.trim()) reset();
+  }, [q, reset]);
+
   const showSearchMode = q.trim().length > 0 || status !== "idle";
 
   function handleSearch(query: string) {
