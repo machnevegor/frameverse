@@ -60,7 +60,7 @@ export const taskColumns: ColumnDef<Task>[] = [
     cell: ({ row }) => {
       const task = row.original;
       return (
-        <div className="flex items-center justify-end gap-1">
+        <div className="flex items-center justify-end gap-1" data-no-row-click>
           {isNonTerminalStatus(task.status) && (
             <CancelTaskButton status={task.status} taskId={task.id} />
           )}
