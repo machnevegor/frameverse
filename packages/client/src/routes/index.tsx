@@ -76,7 +76,6 @@ function HomePage() {
   const isDone = status === "done";
   const isError = status === "error";
 
-  // If the page is opened (or refreshed) with a query in the URL, re-trigger search
   const initialSearchDoneRef = useRef(false);
   useEffect(() => {
     if (!initialSearchDoneRef.current && q.trim()) {
@@ -85,7 +84,6 @@ function HomePage() {
     }
   }, [q, search]);
 
-  // Show search mode when there's an active query or search is in progress
   const showSearchMode = q.trim().length > 0 || status !== "idle";
 
   function handleSearch(query: string) {
@@ -126,7 +124,6 @@ function HomePage() {
             initial="hidden"
             variants={pageVariants}
           >
-            {/* Hero text */}
             <motion.div className="text-center" variants={blockVariants}>
               <div className="mb-3 flex items-center justify-center gap-2">
                 <motion.div
@@ -150,12 +147,10 @@ function HomePage() {
               </p>
             </motion.div>
 
-            {/* Search bar */}
             <motion.div className="w-full max-w-2xl" variants={blockVariants}>
               <SearchBar isLoading={isStreaming} onSearch={handleSearch} />
             </motion.div>
 
-            {/* Hint chips */}
             <motion.div
               className="flex flex-wrap justify-center gap-2"
               variants={chipsContainerVariants}

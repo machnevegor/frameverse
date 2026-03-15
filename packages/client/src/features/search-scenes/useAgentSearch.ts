@@ -98,7 +98,7 @@ export function useAgentSearch() {
             dispatch({ type: "EVENT", event });
           }
         } catch {
-          // ignore malformed SSE data
+          // malformed SSE payload — skip silently
         }
       }
 

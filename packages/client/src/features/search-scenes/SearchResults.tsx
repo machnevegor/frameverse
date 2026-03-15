@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { SearchX } from "lucide-react";
+import { SearchX, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { parseAsString, useQueryState } from "nuqs";
-import React from "react";
+import { Fragment } from "react";
 import { Badge } from "#/components/ui/badge";
 import { Card, CardContent, CardHeader } from "#/components/ui/card";
 import { Separator } from "#/components/ui/separator";
@@ -35,7 +35,7 @@ export function SearchResults({ groups, summary }: SearchResultsProps) {
   return (
     <motion.div
       animate={{ opacity: 1 }}
-      className="space-y-8"
+      className="space-y-6"
       initial={{ opacity: 0 }}
       transition={{ duration: 0.25 }}
     >
@@ -45,9 +45,17 @@ export function SearchResults({ groups, summary }: SearchResultsProps) {
           initial={{ opacity: 0, y: 8 }}
           transition={{ duration: 0.3 }}
         >
-          <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="pt-4">
-              <p className="text-sm leading-relaxed">{summary}</p>
+          <Card>
+            <CardHeader className="pt-4 pb-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="size-4 text-muted-foreground" />
+                <span className="font-medium text-sm">Резюме поиска</span>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 pb-4">
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                {summary}
+              </p>
             </CardContent>
           </Card>
         </motion.div>
@@ -142,10 +150,10 @@ function MovieResultGroup({ group, index }: MovieResultGroupProps) {
                     <Separator />
                     <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-1.5 text-sm">
                       {meta.map(({ label, value }) => (
-                        <React.Fragment key={label}>
+                        <Fragment key={label}>
                           <dt className="text-muted-foreground">{label}</dt>
                           <dd className="font-medium">{value}</dd>
-                        </React.Fragment>
+                        </Fragment>
                       ))}
                     </dl>
                   </>

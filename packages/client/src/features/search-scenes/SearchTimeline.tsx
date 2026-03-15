@@ -1,5 +1,5 @@
+import { Loader2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { Badge } from "#/components/ui/badge";
 import type { SearchEvent } from "#/shared/api/types";
 import type { SearchStatus } from "./useAgentSearch";
 
@@ -9,9 +9,9 @@ interface SearchTimelineProps {
 }
 
 export function SearchTimeline({ events, status }: SearchTimelineProps) {
-  // Filter out conclusion event — it has no visible representation in the timeline
-  const visible = events.filter((e) => e.type !== "conclusion");
-
+  const visible = events.filter(
+    (e) => e.type !== "conclusion" && e.type !== "search_started",
+  );
   const show =
     (status === "streaming" || status === "done") && visible.length > 0;
 
@@ -20,19 +20,31 @@ export function SearchTimeline({ events, status }: SearchTimelineProps) {
       {show && (
         <motion.div
           animate={{ opacity: 1, height: "auto" }}
-          className="mb-6 overflow-hidden"
+          className="mb-6 overflow-hidden rounded-xl border border-border"
           exit={{ opacity: 0, height: 0 }}
           initial={{ opacity: 0, height: 0 }}
           transition={{ duration: 0.3 }}
         >
-          <div className="space-y-3 border-border border-l-2 pl-4">
+          {status === "streaming" && (
+            <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-2.5">
+              <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+              <span className="font-medium text-muted-foreground text-xs">
+                Агент анализирует запрос
+              </span>
+            </div>
+          )}
+          <div className="divide-y divide-border">
             {visible.map((event, i) => (
-              <TimelineItem
-                event={event}
-                isLast={i === visible.length - 1 && status === "streaming"}
+              <motion.div
+                animate={{ opacity: 1 }}
+                className="px-4 py-2.5"
+                initial={{ opacity: 0 }}
                 // biome-ignore lint/suspicious/noArrayIndexKey: SSE events have no stable ID
                 key={i}
-              />
+                transition={{ duration: 0.2 }}
+              >
+                <EventRow event={event} />
+              </motion.div>
             ))}
           </div>
         </motion.div>
@@ -41,44 +53,8 @@ export function SearchTimeline({ events, status }: SearchTimelineProps) {
   );
 }
 
-interface TimelineItemProps {
-  event: SearchEvent;
-  isLast: boolean;
-}
-
-function TimelineItem({ event, isLast }: TimelineItemProps) {
-  return (
-    <motion.div
-      animate={{ opacity: 1, x: 0 }}
-      className="relative flex items-start gap-3"
-      initial={{ opacity: 0, x: -8 }}
-      transition={{ duration: 0.25 }}
-    >
-      {/* Dot on the timeline line */}
-      <div className="absolute top-1.5 -left-[21px]">
-        {isLast ? (
-          <span className="block h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
-        ) : (
-          <span className="block h-2 w-2 rounded-full bg-muted-foreground/30" />
-        )}
-      </div>
-
-      <EventContent event={event} />
-    </motion.div>
-  );
-}
-
-function EventContent({ event }: { event: SearchEvent }) {
+function EventRow({ event }: { event: SearchEvent }) {
   switch (event.type) {
-    case "search_started":
-      return (
-        <p className="text-muted-foreground text-sm">
-          Начинаю поиск:{" "}
-          <span className="font-medium text-foreground">
-            «{event.data.query}»
-          </span>
-        </p>
-      );
     case "thinking":
       return (
         <p className="text-muted-foreground text-sm italic">
@@ -96,10 +72,13 @@ function EventContent({ event }: { event: SearchEvent }) {
       );
     case "results_found":
       return (
-        <div className="flex items-center gap-2">
-          <p className="text-muted-foreground text-sm">Найдено кандидатов:</p>
-          <Badge variant="secondary">{event.data.count}</Badge>
-        </div>
+        <p className="text-muted-foreground text-sm">
+          Найдено{" "}
+          <span className="font-medium text-foreground">
+            {event.data.count}
+          </span>{" "}
+          кандидатов
+        </p>
       );
     case "error":
       return <p className="text-destructive text-sm">{event.data.message}</p>;
