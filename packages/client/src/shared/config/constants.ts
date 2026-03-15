@@ -10,18 +10,18 @@ export const SCENES_PER_PAGE = 20;
 
 export const MOVIE_STATUS_LABEL: Record<MovieStatus, string> = {
   queued: "В очереди",
-  asr: "Распознавание речи",
-  sbd: "Определение сцен",
-  sbe: "Извлечение сцен",
-  ann: "Аннотирование",
-  emb: "Эмбеддинг",
-  completed: "Завершено",
+  asr: "Распознаём речь",
+  sbd: "Находим сцены",
+  sbe: "Нарезаем фрагменты",
+  ann: "Готовим описания сцен",
+  emb: "Подключаем умный поиск",
+  completed: "Готово",
   cancelled: "Отменено",
-  failed_asr: "Ошибка: распознавание речи",
-  failed_sbd: "Ошибка: определение сцен",
-  failed_sbe: "Ошибка: извлечение сцен",
-  failed_ann: "Ошибка: аннотирование",
-  failed_emb: "Ошибка: эмбеддинг",
+  failed_asr: "Ошибка распознавания речи",
+  failed_sbd: "Ошибка обнаружения сцен",
+  failed_sbe: "Ошибка нарезания фрагментов",
+  failed_ann: "Ошибка подготовки описаний сцен",
+  failed_emb: "Ошибка подключения умного поиска",
 };
 
 export const MOVIE_STATUS_VARIANT: Record<
@@ -45,12 +45,12 @@ export const MOVIE_STATUS_VARIANT: Record<
 
 export const SCENE_STATUS_LABEL: Record<SceneStatus, string> = {
   queued: "В очереди",
-  ann: "Аннотирование",
-  emb: "Эмбеддинг",
-  completed: "Завершено",
+  ann: "Готовим описания сцены",
+  emb: "Подключаем умный поиск",
+  completed: "Готово",
   cancelled: "Отменено",
-  failed_ann: "Ошибка: аннотирование",
-  failed_emb: "Ошибка: эмбеддинг",
+  failed_ann: "Ошибка подготовки описания сцены",
+  failed_emb: "Ошибка подключения умного поиска",
 };
 
 export const SCENE_STATUS_VARIANT: Record<
@@ -67,8 +67,10 @@ export const SCENE_STATUS_VARIANT: Record<
 };
 
 export const PIPELINE_STAGE_LABELS = [
-  { key: "scenes_detected", label: "Сцены обнаружены" },
-  { key: "scenes_extracted", label: "Сцены извлечены" },
-  { key: "scenes_annotated", label: "Аннотировано" },
-  { key: "scenes_embedded", label: "Эмбеддинг" },
+  { key: "scenes_detected", label: "Находим сцены" },
+  { key: "scenes_extracted", label: "Нарезаем фрагменты" },
+  { key: "scenes_uploaded", label: "Загружаем видео сцен" },
+  { key: "scenes_materialized", label: "Финализируем сцены" },
+  { key: "scenes_annotated", label: "Готовим описания сцен" },
+  { key: "scenes_embedded", label: "Подключаем умный поиск" },
 ] as const;

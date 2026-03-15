@@ -36,6 +36,8 @@ export interface PaginationInfo {
 export interface Progress {
   scenes_detected: number;
   scenes_extracted?: number;
+  scenes_uploaded?: number;
+  scenes_materialized?: number;
   scenes_annotated?: number;
   scenes_embedded?: number;
 }

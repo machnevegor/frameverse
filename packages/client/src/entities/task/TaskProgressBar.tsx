@@ -1,9 +1,9 @@
-import { Progress } from "#/components/ui/progress";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "#/components/ui/tooltip";
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "#/components/ui/hover-card";
+import { Progress } from "#/components/ui/progress";
 import type { Progress as ProgressData } from "#/shared/api/types";
 import { PIPELINE_STAGE_LABELS } from "#/shared/config/constants";
 
@@ -16,21 +16,10 @@ export function TaskProgressBar({ progress }: TaskProgressBarProps) {
   if (total === 0)
     return <span className="text-muted-foreground text-sm">0 сцен</span>;
 
-  const stages = [
-    { label: PIPELINE_STAGE_LABELS[0].label, value: progress.scenes_detected },
-    {
-      label: PIPELINE_STAGE_LABELS[1].label,
-      value: progress.scenes_extracted ?? 0,
-    },
-    {
-      label: PIPELINE_STAGE_LABELS[2].label,
-      value: progress.scenes_annotated ?? 0,
-    },
-    {
-      label: PIPELINE_STAGE_LABELS[3].label,
-      value: progress.scenes_embedded ?? 0,
-    },
-  ];
+  const stages = PIPELINE_STAGE_LABELS.map((stage) => ({
+    label: stage.label,
+    value: progress[stage.key] ?? 0,
+  }));
 
   return (
     <div className="space-y-2">
@@ -62,24 +51,26 @@ export function TaskProgressCompact({ progress }: TaskProgressCompactProps) {
   const done = progress.scenes_embedded ?? 0;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
-  const rows: { label: string; value: number }[] = [
-    { label: "Обнаружено сцен", value: total },
-    { label: "Извлечено", value: progress.scenes_extracted ?? 0 },
-    { label: "Аннотировано", value: progress.scenes_annotated ?? 0 },
-    { label: "Эмбеддинг", value: progress.scenes_embedded ?? 0 },
-  ];
+  const rows = PIPELINE_STAGE_LABELS.map((stage) => ({
+    label: stage.label,
+    value: progress[stage.key] ?? 0,
+  }));
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
+    <HoverCard openDelay={120}>
+      <HoverCardTrigger asChild>
         <div className="flex cursor-default items-center gap-2">
           <Progress className="h-1.5 w-20" value={pct} />
           <span className="text-muted-foreground text-xs tabular-nums">
             {pct}%
           </span>
         </div>
-      </TooltipTrigger>
-      <TooltipContent className="w-52 space-y-2 p-3" side="top">
+      </HoverCardTrigger>
+      <HoverCardContent
+        align="start"
+        className="w-64 space-y-2 border-border/60 bg-popover/85 p-3 shadow-xl backdrop-blur-md"
+        side="top"
+      >
         {rows.map((row) => (
           <div
             className="flex items-center justify-between gap-4"
@@ -87,9 +78,9 @@ export function TaskProgressCompact({ progress }: TaskProgressCompactProps) {
           >
             <span className="text-xs opacity-70">{row.label}</span>
             <div className="flex items-center gap-1.5">
-              <div className="h-1 w-16 overflow-hidden rounded-full bg-background/20">
+              <div className="h-1 w-16 overflow-hidden rounded-full bg-primary/15">
                 <div
-                  className="h-full rounded-full bg-background/80"
+                  className="h-full rounded-full bg-primary/80"
                   style={{
                     width: `${total > 0 ? Math.round((row.value / total) * 100) : 0}%`,
                   }}
@@ -101,11 +92,11 @@ export function TaskProgressCompact({ progress }: TaskProgressCompactProps) {
             </div>
           </div>
         ))}
-        <hr className="border-background/20" />
+        <hr className="border-border/70" />
         <div className="pt-0.5 text-center text-xs tabular-nums opacity-60">
           {total} сцен всего
         </div>
-      </TooltipContent>
-    </Tooltip>
+      </HoverCardContent>
+    </HoverCard>
   );
 }

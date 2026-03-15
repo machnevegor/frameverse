@@ -19,10 +19,9 @@ export default function Header() {
         {/* Col 1 — Logo (both) */}
         <div className="flex items-center">
           <Link
-            className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 font-medium text-foreground text-sm no-underline shadow-[0_8px_22px_rgba(0,0,0,0.04)] transition hover:border-foreground/25"
+            className="inline-flex items-center rounded-full border border-border bg-background px-3 py-1.5 font-medium text-foreground text-sm no-underline shadow-[0_8px_22px_rgba(0,0,0,0.04)] transition hover:border-foreground/25"
             to="/"
           >
-            <span className="h-2 w-2 rounded-full bg-[linear-gradient(90deg,#56c6be,#7ed3bf)]" />
             фрейм вёрс
           </Link>
         </div>
