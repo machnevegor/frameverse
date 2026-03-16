@@ -20,6 +20,10 @@ This repository is a monorepo with two application packages:
 The repository also includes infrastructure configuration for local and server
 deployment through `Docker Compose`, `Dokploy`, and `Traefik`.
 
+External infrastructure such as `S3`, `PostgreSQL`, and `pgvector` is
+provisioned separately and is not started by this repository's
+`docker-compose.yml`.
+
 ## Core Processing Pipeline
 
 Frameverse preprocesses a movie through five stages:
@@ -113,6 +117,9 @@ docker compose up --build
 - `temporal-ui`
 - Temporal bootstrap helpers for database setup and namespace creation
 
+It does not provision `S3`, `PostgreSQL`, or `pgvector`. These dependencies are
+expected to be available as external services.
+
 This setup is designed to work behind `Traefik` and on a `Dokploy` host, using
 the external `dokploy-network`.
 
@@ -179,6 +186,8 @@ This repository is prepared for containerized deployment:
 - `Docker Compose` defines the multi-service topology
 - `Dokploy` is the intended deployment environment
 - `Traefik` routes the public web app, API, and Temporal UI
+- `S3`, `PostgreSQL`, and `pgvector` are provisioned outside this repository's
+  `docker-compose.yml`
 - the backend exposes `OpenAPI` schema/docs
 - `Temporal` handles orchestration of long-running pipeline jobs
 - `Langfuse` provides tracing and prompt management for LLM-powered steps
