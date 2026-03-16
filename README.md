@@ -4,6 +4,8 @@ Frameverse is a multimodal movie search platform. It turns a full-length film
 into a structured, searchable scene index so users can describe a moment,
 motive, dialogue fragment, or visual situation and jump to the right timestamp.
 
+![Frameverse demo](.github/demo.gif)
+
 Public entry points:
 
 - `https://frameverse.ru/` - web application
@@ -36,6 +38,17 @@ Frameverse preprocesses a movie through five stages:
 
 After the pipeline finishes, a movie becomes a structured search asset with
 scenes, frames, transcripts, annotations, and vectors ready for semantic search.
+
+## Search Signals
+
+Frameverse combines three kinds of information during retrieval:
+
+1. Transcript data - audio information converted into searchable text
+2. Annotation data - visual understanding represented as text
+3. Visual data - scene imagery encoded as visual embeddings
+
+This combination makes it possible to search by spoken content, described scene
+meaning, and purely visual similarity.
 
 ## Repository Structure
 
@@ -75,6 +88,16 @@ Runtime responsibilities:
 - orchestrate long-running jobs through Temporal workers
 - store and retrieve structured scene data for search
 
+Server architecture is organized into three levels:
+
+1. Protocol - abstract interfaces for external systems, including method
+   contracts, input parameters, and return types
+2. Adapter - provider-specific implementations of those protocols
+3. Service - business logic that connects adapters, storage, and pipeline steps
+
+This keeps the backend modular, so model providers and external tools can be
+swapped without rewriting the core business flow.
+
 ### `packages/client`
 
 Frontend package for operating the platform and exploring indexed movies.
@@ -97,6 +120,21 @@ Runtime responsibilities:
 - display movies, scenes, and processing tasks
 - call the backend API
 - surface semantic search results and playback navigation
+
+## Models
+
+The current setup uses:
+
+- [Qwen/Qwen3-VL-32B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-32B-Instruct)
+  for scene annotation
+- [Qwen/Qwen3-Embedding-8B](https://huggingface.co/Qwen/Qwen3-Embedding-8B) for
+  text embeddings
+- [nvidia/llama-nemotron-embed-vl-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-vl-1b-v2)
+  for visual embeddings
+
+The system is model-agnostic by design. These models can be replaced with other
+hosted or self-hosted alternatives depending on quality, latency, and deployment
+constraints.
 
 ## Running The Packages
 

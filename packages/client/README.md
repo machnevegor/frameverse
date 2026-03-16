@@ -1,4 +1,4 @@
-Welcome to your new TanStack Start app!
+Frameverse client is built with TanStack Start.
 
 # Getting Started
 
@@ -17,13 +17,18 @@ To build this application for production:
 pnpm build
 ```
 
-## Testing
+## Previewing The Production Build
 
-This project uses [Vitest](https://vitest.dev/) for testing. You can run the tests with:
+To preview the production build locally:
 
 ```bash
-pnpm test
+pnpm preview
 ```
+
+## Testing
+
+This project includes [Vitest](https://vitest.dev/) in the toolchain, but there
+is currently no dedicated top-level `pnpm test` script in `package.json`.
 
 ## Styling
 
@@ -40,12 +45,12 @@ If you prefer not to use Tailwind CSS:
 
 ## Linting & Formatting
 
-This project uses [Biome](https://biomejs.dev/) for linting and formatting. The following scripts are available:
+This project uses [Biome](https://biomejs.dev/) for linting and formatting. The
+following scripts are available:
 
 ```bash
 pnpm lint
-pnpm format
-pnpm check
+pnpm fmt
 ```
 
 ## Shadcn
@@ -58,19 +63,23 @@ pnpm dlx shadcn@latest add button
 
 ## Routing
 
-This project uses [TanStack Router](https://tanstack.com/router) with file-based routing. Routes are managed as files in `src/routes`.
+This project uses [TanStack Router](https://tanstack.com/router) with file-based
+routing. Routes are managed as files in `src/routes`.
 
 ### Adding A Route
 
-To add a new route to your application just add a new file in the `./src/routes` directory.
+To add a new route to your application just add a new file in the `./src/routes`
+directory.
 
 TanStack will automatically generate the content of the route file for you.
 
-Now that you have two routes you can use a `Link` component to navigate between them.
+Now that you have two routes you can use a `Link` component to navigate between
+them.
 
 ### Adding Links
 
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
+To use SPA (Single Page Application) navigation you will need to import the
+`Link` component from `@tanstack/react-router`.
 
 ```tsx
 import { Link } from "@tanstack/react-router";
@@ -79,21 +88,25 @@ import { Link } from "@tanstack/react-router";
 Then anywhere in your JSX you can use it like so:
 
 ```tsx
-<Link to="/about">About</Link>
+<Link to="/about">About</Link>;
 ```
 
 This will create a link that will navigate to the `/about` route.
 
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
+More information on the `Link` component can be found in the
+[Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
 
 ### Using A Layout
 
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you render `{children}` in the `shellComponent`.
+In the File Based Routing setup the layout is located in
+`src/routes/__root.tsx`. Anything you add to the root route will appear in all
+the routes. The route content will appear in the JSX where you render
+`{children}` in the `shellComponent`.
 
 Here is an example layout that includes a header:
 
 ```tsx
-import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
+import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -123,11 +136,13 @@ export const Route = createRootRoute({
 });
 ```
 
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
+More information on layouts can be found in the
+[Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
 
 ## Server Functions
 
-TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
+TanStack Start provides server functions that allow you to write server-side
+code that seamlessly integrates with your client components.
 
 ```tsx
 import { createServerFn } from "@tanstack/react-start";
@@ -152,7 +167,8 @@ function MyComponent() {
 
 ## API Routes
 
-You can create API routes by using the `server` property in your route definitions:
+You can create API routes by using the `server` property in your route
+definitions:
 
 ```tsx
 import { createFileRoute } from "@tanstack/react-router";
@@ -169,7 +185,10 @@ export const Route = createFileRoute("/api/hello")({
 
 ## Data Fetching
 
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
+There are multiple ways to fetch data in your application. You can use TanStack
+Query to fetch data from a server. But you can also use the `loader`
+functionality built into TanStack Router to load the data for a route before
+it's rendered.
 
 For example:
 
@@ -188,22 +207,25 @@ function PeopleComponent() {
   const data = Route.useLoaderData();
   return (
     <ul>
-      {data.results.map((person) => (
-        <li key={person.name}>{person.name}</li>
-      ))}
+      {data.results.map((person) => <li key={person.name}>{person.name}</li>)}
     </ul>
   );
 }
 ```
 
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
+Loaders simplify your data fetching logic dramatically. Check out more
+information in the
+[Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
 
 # Demo files
 
-Files prefixed with `demo` can be safely deleted. They are there to provide a starting point for you to play around with the features you've installed.
+Files prefixed with `demo` can be safely deleted. They are there to provide a
+starting point for you to play around with the features you've installed.
 
 # Learn More
 
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
+You can learn more about all of the offerings from TanStack in the
+[TanStack documentation](https://tanstack.com).
 
-For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
+For TanStack Start specific documentation, visit
+[TanStack Start](https://tanstack.com/start).
