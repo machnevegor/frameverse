@@ -30,7 +30,7 @@ services:
       context: packages/server
     env_file:
       - .env
-    command: ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["uv", "run", "uvicorn", "src.main:app"]
     depends_on:
       temporal-create-namespace:
         condition: service_completed_successfully
@@ -53,6 +53,19 @@ services:
       - dokploy-network
     ports:
       - "8000:8000"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: packages/server
+    env_file:
+      - .env
+    command: ["uv", "run", "python", "-m", "src.workers.run"]
+    depends_on:
+      temporal-create-namespace:
+        condition: service_completed_successfully
+    networks:
+      - dokploy-network
     restart: unless-stopped
 
   temporal-admin-tools:
@@ -154,19 +167,6 @@ services:
       - dokploy-network
     ports:
       - "8080:8080"
-    restart: unless-stopped
-
-  worker:
-    build:
-      context: packages/server
-    env_file:
-      - .env
-    command: ["uv", "run", "python", "-m", "src.workers.run"]
-    depends_on:
-      temporal-create-namespace:
-        condition: service_completed_successfully
-    networks:
-      - dokploy-network
     restart: unless-stopped
 
 networks:
